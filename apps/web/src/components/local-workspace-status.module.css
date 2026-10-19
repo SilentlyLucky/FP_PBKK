@@ -1,0 +1,50 @@
+.content {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 18px;
+}
+
+.state {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.state p {
+  max-width: 900px;
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.state code,
+.warning code {
+  border-radius: 4px;
+  background: #eaf0f8;
+  padding: 1px 4px;
+  color: #1e3a8a;
+  font-size: 12px;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 11px 12px;
+  border-left: 3px solid #d97706;
+  border-radius: 5px;
+  background: #fffbeb;
+  color: #713f12;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.warning svg {
+  flex: none;
+  margin-top: 1px;
+}

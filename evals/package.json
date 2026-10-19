@@ -1,0 +1,21 @@
+{
+  "name": "@promptlab/evals",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@promptlab/agent": "workspace:*",
+    "@promptlab/contracts": "workspace:*",
+    "@promptlab/db": "workspace:*",
+    "@promptlab/providers": "workspace:*",
+    "@promptlab/tools": "workspace:*",
+    "@types/node": "22.20.5",
+    "drizzle-orm": "0.45.4",
+    "typescript": "5.9.3"
+  }
+}

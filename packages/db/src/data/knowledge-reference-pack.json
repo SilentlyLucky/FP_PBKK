@@ -1,0 +1,524 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "promptlab-general-knowledge-seed-2026-10",
+  "status": "researched_only_not_ingested",
+  "source_snapshot_at_utc": "2026-10-15T03:11:37Z",
+  "scope": {
+    "purpose": "A small public-source seed for general prompt design, programming/debugging, evaluation, retrieval, factuality, risk, and provenance reasoning.",
+    "bounds": {
+      "source_count": 9,
+      "chunk_count": 10,
+      "max_words_per_chunk": 140,
+      "content_policy": "Store concise paraphrases and short evidence excerpts, not full-page copies.",
+      "excluded_content": [
+        "Private or user data",
+        "Claude-specific guidance",
+        "Model or reasoning-effort recommendations",
+        "Provider API instructions that depend on current capabilities",
+        "Search snippets treated as factual evidence"
+      ]
+    },
+    "project_fit": {
+      "markdown_ingest": "The project README describes Knowledge intake for pasted text and TXT/Markdown files; this report is intended to be the human-readable seed. The JSON is a provenance and graph manifest.",
+      "initial_state": "Keep sources local-only. Any Campus indexing or egress requires the project's explicit permission and budget flow.",
+      "not_claimed": "This research does not establish that ingestion, graph extraction, retrieval, or answer grounding works in the application."
+    }
+  },
+  "research_method": {
+    "retrieval_tool": "Defuddle CLI 0.19.3",
+    "retrieval_mode": "Public page fetches parsed with --md; source pages were read directly, not inferred from snippets.",
+    "search_status": "A Google Search request returned a CAPTCHA, so no Google Search is claimed or used as evidence. Bing RSS searches were noisy/mismatched and were not used to substantiate claims.",
+    "provider_calls": "None. No inference API, credentials, private source, or bulk scraping was used.",
+    "limitations": [
+      "Live documentation may change; timestamps identify the inspected snapshot.",
+      "The two OpenAI pages include near-term platform/API deprecation notices. Only general prompt and evaluation methods are proposed for reuse.",
+      "The RAG paper reports results for its own models, baselines, and datasets; those findings are not a universal performance guarantee."
+    ]
+  },
+  "sources": [
+    {
+      "id": "openai-prompting",
+      "title": "Prompting",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/guides/prompting",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "First-party product documentation",
+      "use": "Prompt changes should be versioned and reviewed, with prompt tests and evaluation cases run on publication.",
+      "sections_used": [
+        "Refine your prompt",
+        "Prompts in your application"
+      ],
+      "license_caveat": "No page-specific reuse license was captured. Store paraphrases and a brief attributed excerpt; check current terms before wider redistribution.",
+      "temporal_caveat": "The fetched page contains reusable prompt-object migration/deprecation dates. Those API-specific details are excluded from the generic chunks and should be rechecked before any implementation guidance."
+    },
+    {
+      "id": "openai-evals",
+      "title": "Working with evals",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/guides/evals",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "First-party product documentation",
+      "use": "A task-specific loop: define expected behavior, run test inputs against criteria, inspect results, and iterate.",
+      "sections_used": [
+        "Evaluations overview",
+        "Create an eval for a task"
+      ],
+      "license_caveat": "No page-specific reuse license was captured. Store paraphrases and a brief attributed excerpt; check current terms before wider redistribution.",
+      "temporal_caveat": "At retrieval, the page said the Evals platform would become read-only on 2026-10-31 and was scheduled to shut down on 2026-11-30. The corpus retains only the general evaluation loop, not API instructions."
+    },
+    {
+      "id": "google-prompt-design",
+      "title": "Prompt design strategies",
+      "publisher": "Google AI for Developers",
+      "url": "https://ai.google.dev/gemini-api/docs/prompting-strategies?hl=en",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "First-party Gemini documentation",
+      "use": "Clear, specific instructions and a distinction among question, task, entity, and partial-completion inputs.",
+      "sections_used": [
+        "Clear and specific instructions",
+        "Input"
+      ],
+      "license_caveat": "Google developer documentation is generally CC BY 4.0; code samples are generally Apache 2.0. This corpus paraphrases and copies no code; recheck page-specific notices before reuse.",
+      "temporal_caveat": "The page is Gemini-specific. Only general task-clarity concepts are proposed for reuse; no Gemini syntax or model capability is generalized."
+    },
+    {
+      "id": "rag-paper",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "publisher": "Patrick Lewis et al., arXiv",
+      "url": "https://arxiv.org/abs/2005.11401",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "Primary research paper; arXiv abstract",
+      "version_observed": "arXiv v4, submitted 2021-04-12",
+      "use": "Defines a RAG setup that combines parametric model memory with a dense non-parametric index accessed by a retriever, and reports study-specific evaluation results.",
+      "sections_used": [
+        "Abstract"
+      ],
+      "license_caveat": "The paper is publicly readable on arXiv, but full-text reuse rights are paper-specific and were not checked. Store a paraphrase and citation only."
+    },
+    {
+      "id": "nist-ai-rmf",
+      "title": "AI Risk Management Framework",
+      "publisher": "National Institute of Standards and Technology",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "U.S. government framework landing page",
+      "use": "The framework is voluntary and integrates trustworthiness considerations across AI design, development, use, and evaluation.",
+      "sections_used": [
+        "Overview of the AI RMF"
+      ],
+      "license_caveat": "This is a NIST federal publication page; third-party material, marks, and linked resources may have separate rights. The corpus uses a paraphrase and short excerpt only.",
+      "temporal_caveat": "The fetched page said AI RMF 1.0 was being revised. Recheck the current framework before relying on version-specific details."
+    },
+    {
+      "id": "owasp-prompt-injection",
+      "title": "LLM01:2025 Prompt Injection",
+      "publisher": "OWASP GenAI Security Project",
+      "url": "https://genai.owasp.org/llmrisk/llm01-prompt-injection/",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "Application security guidance",
+      "use": "Describes direct and indirect prompt injection, including injection carried by external web pages or files, and says RAG does not fully mitigate the risk.",
+      "sections_used": [
+        "Overview",
+        "Types of Prompt Injection Vulnerabilities"
+      ],
+      "license_caveat": "A page-specific license was not captured by the extraction. Verify current OWASP project terms before redistribution; this corpus stores a paraphrase and brief excerpt only."
+    },
+    {
+      "id": "mdn-js-debugging",
+      "title": "JavaScript debugging and error handling",
+      "publisher": "MDN Web Docs / Mozilla",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Scripting/Debugging_JavaScript",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "Developer documentation",
+      "use": "Validate or lint code before debugging; distinguish syntax and logic errors; use browser developer tools, console output, and explicit error handling.",
+      "sections_used": [
+        "Recap on types of JavaScript error",
+        "Linting your code",
+        "Learning outcomes"
+      ],
+      "license_caveat": "MDN text is generally CC BY-SA 2.5 unless otherwise noted; code samples can have separate terms. No code is copied; check the current page notice before redistribution."
+    },
+    {
+      "id": "google-sre-testing",
+      "title": "Testing for Reliability",
+      "publisher": "Google SRE Book",
+      "url": "https://sre.google/sre-book/testing-reliability/",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "Software reliability guidance",
+      "use": "Tests reduce uncertainty about changed behavior, but passing tests do not by themselves prove reliability; confidence also depends on coverage and operational evidence.",
+      "sections_used": [
+        "Testing for Reliability",
+        "Relationships Between Testing and Mean Time to Repair"
+      ],
+      "license_caveat": "The Google SRE book text is CC BY 4.0. This corpus stores a paraphrase and short attributed excerpt, not the chapter."
+    },
+    {
+      "id": "w3c-prov-o",
+      "title": "PROV-O: The PROV Ontology",
+      "publisher": "World Wide Web Consortium",
+      "url": "https://www.w3.org/TR/prov-o/",
+      "accessed_at_utc": "2026-10-15T03:11:37Z",
+      "source_type": "W3C Recommendation",
+      "version_observed": "2013-04-30 Recommendation",
+      "use": "Provides interoperable provenance terms; its core Entity, Activity, and Agent concepts map naturally to source documents, ingest/build operations, and responsible publishers or reviewers.",
+      "sections_used": [
+        "Abstract",
+        "Starting Point Terms"
+      ],
+      "license_caveat": "W3C document terms apply. Preserve the source link and required notice for quotations; this corpus uses a paraphrase and short excerpt."
+    }
+  ],
+  "chunks": [
+    {
+      "id": "chunk:openai-prompting",
+      "source_id": "openai-prompting",
+      "topic": "Prompt change control",
+      "summary": "OpenAI's guide treats prompts as application artifacts that should be maintained and reviewed with product changes. It explicitly recommends running prompt tests and evaluation cases when publishing. The generic takeaway is to version prompt changes and check them against representative cases; provider-specific message placement and prompt-object APIs are not generalized.",
+      "evidence_excerpt": "Run your prompt tests and evaluation cases every time you publish.",
+      "source_section": "Refine your prompt; Prompts in your application",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:google-prompt-design",
+      "source_id": "google-prompt-design",
+      "topic": "Clear task instructions",
+      "summary": "Google's Gemini guide recommends clear, specific instructions and distinguishes question, task, entity, and partial-completion inputs. This taxonomy can help a prompt writer state what the input represents and what operation is requested. The source is Gemini-specific; this chunk does not endorse Gemini syntax or capability.",
+      "evidence_excerpt": "provide it with clear and specific instructions.",
+      "source_section": "Clear and specific instructions; Input",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:openai-eval-loop",
+      "source_id": "openai-evals",
+      "topic": "Task-specific evaluation",
+      "summary": "The guide describes an evaluation loop: specify the task and criteria, run test inputs, inspect results, then iterate. This is a provider-neutral evaluation pattern. The guide's API examples and platform lifecycle are time-sensitive and should not be treated as current implementation instructions.",
+      "evidence_excerpt": "Analyze the results, then iterate and improve on your prompt.",
+      "source_section": "Evaluations overview",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:rag-architecture",
+      "source_id": "rag-paper",
+      "topic": "Retrieval-augmented generation architecture",
+      "summary": "The paper defines RAG models as combining parametric memory in a pretrained sequence-to-sequence model with non-parametric memory in a dense vector index, accessed by a pretrained neural retriever. In this study, generation is conditioned on retrieved passages as well as the input.",
+      "evidence_excerpt": "models which combine pre-trained parametric and non-parametric memory for language generation.",
+      "source_section": "Abstract",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:rag-study-finding",
+      "source_id": "rag-paper",
+      "topic": "Scope of reported RAG results",
+      "summary": "The paper reports state-of-the-art results on three open-domain question-answering tasks and more specific, diverse, factual language than a parametric-only baseline. These are findings for the paper's models, tasks, datasets, and comparison; they are not a guarantee that every RAG implementation improves factuality.",
+      "evidence_excerpt": "more specific, diverse and factual language than a state-of-the-art parametric-only seq2seq baseline.",
+      "source_section": "Abstract",
+      "claim_type": "study_finding_with_scope"
+    },
+    {
+      "id": "chunk:nist-ai-rmf-lifecycle",
+      "source_id": "nist-ai-rmf",
+      "topic": "AI risk management across a lifecycle",
+      "summary": "NIST describes AI RMF as voluntary and intended to incorporate trustworthiness considerations into AI system design, development, use, and evaluation. Its landing page said AI RMF 1.0 was being revised at access time, so version-specific recommendations need a fresh source check.",
+      "evidence_excerpt": "incorporate trustworthiness considerations into the design, development, use, and evaluation of AI products, services, and systems.",
+      "source_section": "Overview of the AI RMF",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:owasp-prompt-injection",
+      "source_id": "owasp-prompt-injection",
+      "topic": "Prompt injection in retrieved content",
+      "summary": "OWASP distinguishes direct injection from indirect injection carried in external content such as websites or files. It says RAG and fine-tuning do not fully mitigate prompt injection. Derived design implication: retrieved passages should be treated as untrusted data and their instructions should not gain authority merely because retrieval returned them.",
+      "evidence_excerpt": "research shows that they do not fully mitigate prompt injection vulnerabilities.",
+      "source_section": "Overview; Types of Prompt Injection Vulnerabilities",
+      "claim_type": "source_summary_plus_labeled_implication"
+    },
+    {
+      "id": "chunk:mdn-js-debugging",
+      "source_id": "mdn-js-debugging",
+      "topic": "Programming verification and debugging",
+      "summary": "MDN recommends validating code before investigating specific errors, then using browser developer tools and console output to locate problems. Its lesson distinguishes syntax and logic errors and covers conditionals, try/catch, and throw for handling errors. This chunk is JavaScript-specific.",
+      "evidence_excerpt": "You should validate your code first before trying to track down specific errors.",
+      "source_section": "Recap on types of JavaScript error; Linting your code",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:google-sre-testing",
+      "source_id": "google-sre-testing",
+      "topic": "Test evidence and reliability",
+      "summary": "Google SRE says testing can demonstrate equivalence on changed paths and reduce uncertainty, with needed coverage depending on reliability requirements. It also states that passing tests do not necessarily prove reliability. Test results should therefore be reported with their scope and combined with relevant operational evidence.",
+      "evidence_excerpt": "Passing a test or a series of tests doesn’t necessarily prove reliability.",
+      "source_section": "Testing for Reliability; Relationships Between Testing and Mean Time to Repair",
+      "claim_type": "source_summary"
+    },
+    {
+      "id": "chunk:w3c-prov-o",
+      "source_id": "w3c-prov-o",
+      "topic": "Provenance graph vocabulary",
+      "summary": "PROV-O expresses a provenance data model using interoperable classes and properties. Its starting terms define an Entity as a thing with fixed aspects, an Activity as something that occurs over time and acts on or uses entities, and an Agent as something responsible for an activity or entity. A PromptLab mapping can represent a source as an Entity, ingestion/build as an Activity, and publisher/reviewer as an Agent.",
+      "evidence_excerpt": "An Activity is something that occurs over a period of time and acts upon or with entities.",
+      "source_section": "Abstract; Starting Point Terms",
+      "claim_type": "source_summary_plus_labeled_mapping"
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "prompt_change",
+        "label": "Prompt change"
+      },
+      {
+        "id": "prompt_design",
+        "label": "Prompt design"
+      },
+      {
+        "id": "prompt_evaluation",
+        "label": "Task-specific evaluation"
+      },
+      {
+        "id": "evaluation_inputs",
+        "label": "Evaluation inputs and criteria"
+      },
+      {
+        "id": "prompt_input_types",
+        "label": "Question, task, entity, or partial-completion input"
+      },
+      {
+        "id": "rag",
+        "label": "Retrieval-augmented generation"
+      },
+      {
+        "id": "parametric_memory",
+        "label": "Parametric model memory"
+      },
+      {
+        "id": "retrieval_memory",
+        "label": "Non-parametric retrieval memory"
+      },
+      {
+        "id": "external_content",
+        "label": "External web or file content"
+      },
+      {
+        "id": "indirect_prompt_injection",
+        "label": "Indirect prompt injection"
+      },
+      {
+        "id": "reported_rag_finding",
+        "label": "Study-specific RAG result"
+      },
+      {
+        "id": "ai_risk_management",
+        "label": "AI risk management"
+      },
+      {
+        "id": "ai_lifecycle",
+        "label": "Design, development, use, evaluation"
+      },
+      {
+        "id": "software_change",
+        "label": "Software change"
+      },
+      {
+        "id": "test_evidence",
+        "label": "Test evidence"
+      },
+      {
+        "id": "reliability",
+        "label": "System reliability"
+      },
+      {
+        "id": "javascript_debugging",
+        "label": "JavaScript debugging"
+      },
+      {
+        "id": "code_validation",
+        "label": "Validation and linting"
+      },
+      {
+        "id": "source_document",
+        "label": "Source document"
+      },
+      {
+        "id": "ingestion_activity",
+        "label": "Ingestion or graph-build activity"
+      },
+      {
+        "id": "responsible_agent",
+        "label": "Publisher, operator, or reviewer"
+      },
+      {
+        "id": "prov_entity",
+        "label": "PROV-O Entity"
+      }
+    ],
+    "edges": [
+      {
+        "from": "prompt_change",
+        "predicate": "should_be_checked_with",
+        "to": "prompt_evaluation",
+        "evidence_chunk_ids": [
+          "chunk:openai-prompting"
+        ],
+        "basis_type": "direct",
+        "support": "The source says to run prompt tests and evaluation cases each time a prompt is published."
+      },
+      {
+        "from": "prompt_evaluation",
+        "predicate": "uses",
+        "to": "evaluation_inputs",
+        "evidence_chunk_ids": [
+          "chunk:openai-eval-loop"
+        ],
+        "basis_type": "direct",
+        "support": "The source loop specifies a task, test inputs, result analysis, and iteration."
+      },
+      {
+        "from": "prompt_design",
+        "predicate": "can_classify_input_as",
+        "to": "prompt_input_types",
+        "evidence_chunk_ids": [
+          "chunk:google-prompt-design"
+        ],
+        "basis_type": "direct",
+        "support": "The guide distinguishes question, task, entity, and partial-completion inputs."
+      },
+      {
+        "from": "rag",
+        "predicate": "combines",
+        "to": "parametric_memory",
+        "evidence_chunk_ids": [
+          "chunk:rag-architecture"
+        ],
+        "basis_type": "direct",
+        "support": "The paper describes combining pretrained parametric memory with non-parametric retrieved memory."
+      },
+      {
+        "from": "rag",
+        "predicate": "combines",
+        "to": "retrieval_memory",
+        "evidence_chunk_ids": [
+          "chunk:rag-architecture"
+        ],
+        "basis_type": "direct",
+        "support": "The paper describes a dense vector index accessed by a neural retriever."
+      },
+      {
+        "from": "rag",
+        "predicate": "reported_result_in_one_study",
+        "to": "reported_rag_finding",
+        "evidence_chunk_ids": [
+          "chunk:rag-study-finding"
+        ],
+        "basis_type": "study_finding",
+        "support": "The abstract reports more specific, diverse, factual text than its parametric-only baseline for the paper's tasks."
+      },
+      {
+        "from": "external_content",
+        "predicate": "can_carry",
+        "to": "indirect_prompt_injection",
+        "evidence_chunk_ids": [
+          "chunk:owasp-prompt-injection"
+        ],
+        "basis_type": "direct",
+        "support": "OWASP identifies websites and files as possible sources of indirect prompt injection."
+      },
+      {
+        "from": "rag",
+        "predicate": "does_not_fully_mitigate",
+        "to": "indirect_prompt_injection",
+        "evidence_chunk_ids": [
+          "chunk:owasp-prompt-injection"
+        ],
+        "basis_type": "direct",
+        "support": "OWASP says RAG does not fully mitigate prompt injection."
+      },
+      {
+        "from": "ai_risk_management",
+        "predicate": "covers",
+        "to": "ai_lifecycle",
+        "evidence_chunk_ids": [
+          "chunk:nist-ai-rmf-lifecycle"
+        ],
+        "basis_type": "direct",
+        "support": "NIST describes trustworthiness considerations across design, development, use, and evaluation."
+      },
+      {
+        "from": "test_evidence",
+        "predicate": "reduces_uncertainty_about",
+        "to": "software_change",
+        "evidence_chunk_ids": [
+          "chunk:google-sre-testing"
+        ],
+        "basis_type": "direct",
+        "support": "Google SRE says tests that pass before and after a change reduce uncertainty about changed paths."
+      },
+      {
+        "from": "test_evidence",
+        "predicate": "does_not_by_itself_prove",
+        "to": "reliability",
+        "evidence_chunk_ids": [
+          "chunk:google-sre-testing"
+        ],
+        "basis_type": "direct",
+        "support": "Google SRE says passing tests do not necessarily prove reliability."
+      },
+      {
+        "from": "javascript_debugging",
+        "predicate": "starts_with",
+        "to": "code_validation",
+        "evidence_chunk_ids": [
+          "chunk:mdn-js-debugging"
+        ],
+        "basis_type": "direct",
+        "support": "MDN recommends validating code before tracking down specific errors."
+      },
+      {
+        "from": "source_document",
+        "predicate": "can_be_modeled_as",
+        "to": "prov_entity",
+        "evidence_chunk_ids": [
+          "chunk:w3c-prov-o"
+        ],
+        "basis_type": "application_mapping",
+        "support": "PROV-O defines Entity as a physical, digital, conceptual, or other thing with fixed aspects; a source record can be represented as an Entity."
+      },
+      {
+        "from": "ingestion_activity",
+        "predicate": "can_use_and_generate",
+        "to": "source_document",
+        "evidence_chunk_ids": [
+          "chunk:w3c-prov-o"
+        ],
+        "basis_type": "application_mapping",
+        "support": "PROV-O defines Activity as occurring over time and acting on or using entities; activities may consume, process, or generate entities."
+      },
+      {
+        "from": "responsible_agent",
+        "predicate": "can_be_attributed_responsibility_for",
+        "to": "ingestion_activity",
+        "evidence_chunk_ids": [
+          "chunk:w3c-prov-o"
+        ],
+        "basis_type": "application_mapping",
+        "support": "PROV-O defines Agent in terms of responsibility for an activity or entity."
+      }
+    ]
+  },
+  "proposed_ingestion_and_verification_acceptance": [
+    "Keep this corpus bounded to the 9 listed sources and 10 chunks; keep each chunk under 140 words and do not ingest whole pages.",
+    "For every chunk, preserve source ID, URL, access timestamp, section, and evidence excerpt; confirm each excerpt against the source page.",
+    "Review every graph edge against its listed evidence chunk. Keep study findings and application mappings labeled; remove any edge without direct textual support or an explicitly labeled mapping.",
+    "Do not convert provider-specific API migration notices, model names, capabilities, or reasoning-effort choices into general advice. Recheck current official capability documentation before making such recommendations.",
+    "Use the Markdown report for project Knowledge intake; retain JSON as the structured provenance/graph manifest. The README says JSON is not among the listed upload types.",
+    "Start in local-only state. Do not grant Campus indexing or trigger provider egress without the project's explicit consent and budget flow.",
+    "Prepare 12 fixed retrieval-preview questions spanning prompt design, programming/debugging, evaluation, RAG, prompt injection, risk management, reliability, and provenance. Require an expected chunk in the top five for each query and visible source attribution for each retrieved chunk.",
+    "Manually verify every factual answer against its cited chunk and source. If the corpus has no supporting chunk, label the topic as uncovered instead of filling the gap with an uncited claim.",
+    "Record actual ingest/build/retrieval results separately. This research manifest alone is not evidence that GraphRAG works."
+  ],
+  "excluded_candidates": [
+    {
+      "url": "https://cloud.google.com/use-cases/retrieval-augmented-generation",
+      "reason": "The page body was returned, but Defuddle repeatedly raised an invalid-relative-URL error while extracting metadata for /use-cases/retrieval-augmented-generation. Excluded in favor of a cleanly extracted primary RAG paper."
+    }
+  ]
+}

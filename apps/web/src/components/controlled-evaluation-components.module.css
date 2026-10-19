@@ -1,0 +1,376 @@
+.setup,
+.results {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.formGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.armSelection,
+.sourceSelection {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.armSelection legend,
+.sourceSelection legend {
+  padding-inline: 4px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.armOptions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.armOptions label,
+.sourceList label {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.armOptions input,
+.sourceList input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--primary);
+}
+
+.armOptions label > span,
+.sourceList label > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.armOptions small,
+.sourceList small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.disabledOption {
+  color: var(--muted-foreground);
+  cursor: not-allowed !important;
+}
+
+.sourceList {
+  display: grid;
+  max-height: 320px;
+  gap: 8px;
+  overflow: auto;
+}
+
+.caseExample summary,
+.manifestDetails summary,
+.hashDetails summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.caseExample pre,
+.hashDetails pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.submitRow,
+.resultMeta,
+.exportRow,
+.pairHeading,
+.answerHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.submitRow > .helper {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.resultMeta {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.configuration,
+.caseSection,
+.decision {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.configuration h3,
+.caseSection h3,
+.decision h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.facts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.facts > div,
+.armCard dl > div,
+.answerFacts > div {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 4px;
+}
+
+.facts dt,
+.armCard dt,
+.answerFacts dt {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.facts dd,
+.armCard dd,
+.answerFacts dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.wrap {
+  overflow-wrap: anywhere;
+}
+
+.armCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+
+.armCard,
+.pairCard,
+.answer {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.armCard h4,
+.pairCard h4,
+.answer h5 {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.armCard dl {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.frozenSources {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.manifestDetails {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.caseList {
+  display: grid;
+  gap: 8px;
+}
+
+.caseRow {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0 12px 12px;
+}
+
+.caseRow > summary {
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.caseRow > summary > span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.caseRow > summary strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.caseRow > summary small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.caseInput {
+  margin: 0 0 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-muted);
+  padding: 10px 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pairCard {
+  margin-top: 12px;
+  background: var(--surface-muted);
+}
+
+.pairHeading,
+.answerHeading {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.answerGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.answer {
+  background: var(--surface);
+}
+
+.answerText {
+  min-height: 80px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.answerFacts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.usageFacts {
+  grid-column: 1 / -1;
+}
+
+.hashDetails {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.decision {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .formGrid,
+  .armOptions,
+  .facts,
+  .answerGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .caseRow > summary {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding-block: 8px;
+  }
+
+  .usageFacts {
+    grid-column: auto;
+  }
+}

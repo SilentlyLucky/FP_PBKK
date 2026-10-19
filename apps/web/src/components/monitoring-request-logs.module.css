@@ -1,0 +1,275 @@
+.panel {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  padding: 16px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+}
+
+.header,
+.pagination,
+.pagination > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.header,
+.pagination {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header {
+  flex-wrap: wrap;
+}
+
+.headerActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerActions > button {
+  min-height: 40px;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.header p,
+.empty,
+.error,
+.pagination > span {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(140px, 0.7fr));
+  gap: 10px;
+}
+
+.filters label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.filters input,
+.filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  padding: 8px 10px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.filters input:focus-visible,
+.filters select:focus-visible,
+.details summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.tableWrap {
+  min-width: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font-size: 11px;
+  text-align: left;
+}
+
+.table th {
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  padding: 10px 8px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table td {
+  max-width: 220px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 8px;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.table td strong,
+.table td small {
+  display: block;
+}
+
+.table td strong {
+  font-weight: 600;
+}
+
+.table td small {
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.details summary {
+  display: inline-flex;
+  min-width: 56px;
+  min-height: 44px;
+  align-items: center;
+  cursor: pointer;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.details dl {
+  display: grid;
+  min-width: 240px;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--canvas);
+  padding: 10px;
+}
+
+.details dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.details dt {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.details dd {
+  margin: 0;
+  font-size: 11px;
+}
+
+.pagination {
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.pagination > div {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pagination > span {
+  margin: 0;
+}
+
+.empty {
+  margin: 0;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+@media (max-width: 900px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+    max-width: none;
+  }
+
+  .table tr {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+  }
+
+  .table td {
+    display: grid;
+    grid-template-columns: minmax(100px, 0.35fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    border: 0;
+    padding: 5px 4px;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    color: var(--muted-foreground);
+    font-size: 10px;
+    font-weight: 550;
+  }
+
+  .details dl {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .panel {
+    padding: 12px;
+  }
+
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .table td {
+    grid-template-columns: minmax(84px, 0.35fr) minmax(0, 1fr);
+  }
+}

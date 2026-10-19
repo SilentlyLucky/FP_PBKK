@@ -1,0 +1,25 @@
+{
+  "campaignId": "flow1-live-20261018-000000000000",
+  "maxInferenceCallsByProvider": {
+    "campus_gateway": 5,
+    "codex_app_server": 6
+  },
+  "providers": {
+    "campus_gateway": {
+      "reservedCalls": 0,
+      "lastOutcome": "not_attempted",
+      "requestedModel": null,
+      "responseModel": null,
+      "usage": "unknown",
+      "capabilitiesObserved": []
+    },
+    "codex_app_server": {
+      "reservedCalls": 0,
+      "lastOutcome": "not_attempted",
+      "requestedModel": null,
+      "responseModel": null,
+      "usage": "unknown",
+      "capabilitiesObserved": []
+    }
+  }
+}

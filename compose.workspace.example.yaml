@@ -1,0 +1,15 @@
+services:
+  web:
+    environment:
+      PROMPTLAB_LOCAL_WORKSPACE_ROOTS: "[{\"projectId\":\"${PROMPTLAB_WORKSPACE_PROJECT_ID:?Set a project UUID in .env.container}\",\"rootPath\":\"/promptlab-workspace\"}]"
+      PROMPTLAB_LOCAL_WORKSPACE_WRITE_ENABLED: "1"
+      PROMPTLAB_LOCAL_WORKSPACE_WRITE_PROJECTS: "[\"${PROMPTLAB_WORKSPACE_PROJECT_ID:?Set a project UUID in .env.container}\"]"
+    group_add:
+      - "${PROMPTLAB_WORKSPACE_GROUP_ID:-1000}"
+    volumes:
+      - type: bind
+        source: ${PROMPTLAB_WORKSPACE_PATH:?Set a dedicated workspace path in .env.container}
+        target: /promptlab-workspace
+        read_only: false
+        bind:
+          create_host_path: false

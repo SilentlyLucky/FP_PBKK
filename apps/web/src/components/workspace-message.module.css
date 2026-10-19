@@ -1,0 +1,280 @@
+.message {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.message > :first-child {
+  margin-top: 0;
+}
+
+.message > :last-child {
+  margin-bottom: 0;
+}
+
+.message p,
+.message h1,
+.message h2,
+.message h3,
+.message h4,
+.message h5,
+.message h6,
+.message blockquote,
+.message ul,
+.message ol {
+  margin: 0;
+}
+
+.message h1,
+.message h2,
+.message h3,
+.message h4,
+.message h5,
+.message h6 {
+  color: var(--foreground);
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.message h1 {
+  font-size: 1.45em;
+}
+
+.message h2 {
+  font-size: 1.3em;
+}
+
+.message h3,
+.message h4 {
+  font-size: 1.12em;
+}
+
+.message ul,
+.message ol {
+  display: grid;
+  gap: 6px;
+  padding-left: 24px;
+}
+
+.message li {
+  padding-left: 2px;
+}
+
+.message blockquote {
+  border-left: 3px solid var(--border);
+  padding: 4px 0 4px 14px;
+  color: var(--muted-foreground);
+}
+
+.message hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.message a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.message a:focus-visible,
+.codeHeader button:focus-visible {
+  border-radius: 5px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.inlineCode {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-muted);
+  padding: 2px 5px;
+  color: var(--foreground);
+  font-family: var(--font-code);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.codeBlock {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.codeHeader {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: #f1f5f9;
+  padding: 0 12px;
+  color: var(--muted-foreground);
+  font-family: var(--font-code);
+  font-size: 11px;
+}
+
+.codeHeader button {
+  display: inline-flex;
+  min-width: 76px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.codeHeader button:hover {
+  background: #e2e8f0;
+}
+
+.codeBlock pre {
+  max-width: 100%;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  color: #0f172a;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.7;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.codeBlock code {
+  font-family: inherit;
+}
+
+.diagramScroll {
+  max-width: 100%;
+  overflow: auto;
+  padding: 16px;
+  background: #fff;
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.diagramNodeShape {
+  fill: #fff;
+  stroke: #94a3b8;
+  stroke-width: 1.5px;
+}
+
+.diagramNodeLabel {
+  fill: #0f172a;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.diagramEdge {
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 1.5px;
+}
+
+.diagramArrow {
+  fill: #64748b;
+}
+
+.diagramEdgeLabel {
+  fill: #475569;
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+
+.diagramFallback {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  color: #475569;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.diagramFallback pre {
+  overflow: auto;
+  margin: 0;
+  border-radius: 6px;
+  background: #f1f5f9;
+  padding: 10px;
+  color: #0f172a;
+  font-family: var(--font-code);
+  white-space: pre;
+}
+
+.inlineMath {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: -0.12em;
+}
+
+.displayMath {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px 4px;
+  text-align: center;
+}
+
+.inlineMath math,
+.displayMath math {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1.08em;
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  text-align: left;
+}
+
+.message th,
+.message td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.message th {
+  background: var(--surface-muted);
+  font-weight: 650;
+}
+
+@media (max-width: 640px) {
+  .message {
+    font-size: 13px;
+  }
+
+  .codeBlock pre {
+    padding: 12px;
+    font-size: 11px;
+  }
+}

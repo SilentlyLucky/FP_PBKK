@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.next*/
+*.tsbuildinfo
+dist/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.container.example
+!.env.example
+# Per-machine writable workspace mount and project UUID.
+compose.workspace.yaml
+.local/
+*.log

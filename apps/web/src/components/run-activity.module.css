@@ -1,0 +1,154 @@
+.list {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.sequence {
+  display: grid;
+  min-height: 28px;
+  place-items: center;
+  color: var(--muted-foreground);
+  font-family: var(--font-code);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.description {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.titleRow {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.titleRow strong {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.toolState {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.toolState[data-state="failed"] {
+  border-color: var(--warning);
+}
+
+.toolName {
+  overflow-wrap: anywhere;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  padding: 2px 4px;
+  color: var(--muted-foreground);
+  font-family: var(--font-code);
+  font-size: 10px;
+}
+
+.summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.attribution,
+.time {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.details {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.details > summary {
+  display: flex;
+  min-height: 44px;
+  width: fit-content;
+  align-items: center;
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 550;
+}
+
+.detailList {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.detailList > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(96px, 0.45fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.detailList dt {
+  color: var(--muted-foreground);
+}
+
+.detailList dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.trailing {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .item {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .trailing {
+    grid-column: 2;
+  }
+
+  .detailList > div {
+    grid-template-columns: minmax(84px, 0.4fr) minmax(0, 1fr);
+    gap: 4px;
+  }
+}

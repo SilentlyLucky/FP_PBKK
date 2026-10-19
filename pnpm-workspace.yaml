@@ -1,0 +1,13 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "evals"
+allowBuilds:
+  esbuild@0.18.20: true
+  esbuild@0.25.12: true
+  esbuild@0.28.2: true
+  msgpackr-extract@3.0.4: false
+  unrs-resolver@1.12.2: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.55.0
+  - prettier@3.9.10

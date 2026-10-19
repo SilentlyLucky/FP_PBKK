@@ -1,0 +1,26 @@
+{
+  "name": "@promptlab/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import ../../tools/load-root-env.mjs --import tsx/esm --watch src/main.ts",
+    "start": "node --import ../../tools/load-root-env.mjs --import tsx/esm src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@promptlab/agent": "workspace:*",
+    "@promptlab/contracts": "workspace:*",
+    "@promptlab/db": "workspace:*",
+    "@promptlab/providers": "workspace:*",
+    "@promptlab/tools": "workspace:*",
+    "bullmq": "6.3.12",
+    "drizzle-orm": "0.45.4",
+    "ioredis": "5.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,541 @@
+.section {
+  order: 5;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.section > :global(.card) {
+  border-color: #dbe4f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.heading > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.headingIcon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.body {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 18px;
+}
+
+.rootManager {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.rootManagerHeading,
+.directoryPickerHeading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rootManagerHeading > div,
+.directoryPickerHeading > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.rootManagerHeading strong,
+.directoryPickerHeading strong,
+.rootRow strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.rootManagerHeading p,
+.directoryPickerHeading p,
+.registrationApproval p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.rootRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.rootRow > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.rootRow small {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.section :global(.helper) {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rootActions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.directoryPicker {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 12px;
+}
+
+.pickerBreadcrumbs {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.pickerBreadcrumbs span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pickerDirectories {
+  display: grid;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.pickerDirectories button {
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid #f1f5f9;
+  background: transparent;
+  padding: 8px 10px;
+  color: #334155;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.pickerDirectories button:last-child {
+  border-bottom: 0;
+}
+
+.pickerDirectories button svg:last-child {
+  flex: none;
+  margin-left: auto;
+}
+
+.pickerDirectories button:hover {
+  background: #f8fafc;
+}
+
+.registrationApproval {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 12px;
+}
+
+.unavailable {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.unavailable p {
+  max-width: 760px;
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.unavailable a {
+  color: #1d4ed8;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.permissionChoices label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #334155;
+}
+
+.permissionChoices input {
+  margin-top: 4px;
+  accent-color: #2563eb;
+}
+
+.permissionChoices label span {
+  display: grid;
+  gap: 3px;
+  line-height: 1.45;
+}
+
+.browser {
+  display: grid;
+  gap: 14px;
+}
+
+.browserToolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.breadcrumbs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.breadcrumbs button,
+.crumb button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: #1e3a8a;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+}
+
+.expires {
+  color: #64748b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.databaseNote {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #f59e0b;
+  border-radius: 5px;
+  background: #fffbeb;
+  color: #713f12;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.78fr) minmax(0, 1.22fr);
+  gap: 16px;
+}
+
+.fileColumn,
+.previewColumn {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+}
+
+.search {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 7px 6px 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 9px;
+  color: #64748b;
+}
+
+.search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #0f172a;
+  font: inherit;
+}
+
+.search input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.fileList,
+.searchResults {
+  display: grid;
+  max-height: 360px;
+  overflow: auto;
+  align-content: start;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.fileEntry,
+.searchMatch {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #edf2f7;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+}
+
+.fileEntry:last-child,
+.searchMatch:last-child {
+  border-bottom: 0;
+}
+
+.fileEntry:hover,
+.searchMatch:hover {
+  background: #f8fafc;
+}
+
+.fileEntry > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileEntry svg {
+  flex: none;
+  color: #2563eb;
+}
+
+.searchResults {
+  gap: 0;
+  padding: 4px;
+}
+
+.searchMatch {
+  display: grid;
+  gap: 4px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.searchMatch span {
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchResults > p {
+  margin: 8px;
+}
+
+.previewHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.previewHeading > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.previewHeading .helper {
+  overflow-wrap: anywhere;
+}
+
+.previewContent {
+  max-height: 420px;
+  overflow: auto;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #1e293b;
+  font:
+    12px/1.65 var(--font-mono, ui-monospace),
+    monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.importPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.importPanel h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.importPanel > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.permissionChoices {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.permissionChoices legend {
+  padding: 0 4px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.permissionChoices label {
+  padding: 8px;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 14px;
+}
+
+.unsupported {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .heading {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .heading > div {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .heading > span:last-child {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+    margin-left: 0;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .section :global(button) {
+    min-height: 44px;
+  }
+
+  .browserToolbar {
+    flex-wrap: wrap;
+  }
+
+  .expires {
+    order: 3;
+    width: 100%;
+  }
+
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rootManagerHeading,
+  .directoryPickerHeading,
+  .rootRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rootActions {
+    width: 100%;
+  }
+
+  .rootActions > button {
+    flex: 1;
+  }
+}

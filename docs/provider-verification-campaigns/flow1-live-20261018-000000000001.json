@@ -1,0 +1,34 @@
+{
+  "campaignId": "flow1-live-20261018-000000000001",
+  "maxInferenceCallsByProvider": {
+    "campus_gateway": 110,
+    "codex_app_server": 110
+  },
+  "providers": {
+    "campus_gateway": {
+      "reservedCalls": 11,
+      "lastOutcome": "reserved_before_network_request",
+      "requestedModel": "qwen3:14b",
+      "responseModel": "qwen3:14b",
+      "usage": "reported",
+      "capabilitiesObserved": [
+        "non-stream chat completion returned a valid response",
+        "prompt and completion token usage were reported"
+      ]
+    },
+    "codex_app_server": {
+      "reservedCalls": 12,
+      "lastOutcome": "reserved_before_network_request",
+      "requestedModel": "gpt-6-luna",
+      "responseModel": "gpt-6-luna",
+      "usage": "reported",
+      "capabilitiesObserved": [
+        "bounded chat generation succeeded",
+        "effective model gpt-6-luna",
+        "stream text observed",
+        "native tool and approval requests are refused by the protocol guard",
+        "bounded-native filesystem and provider-egress profile confirmed"
+      ]
+    }
+  }
+}

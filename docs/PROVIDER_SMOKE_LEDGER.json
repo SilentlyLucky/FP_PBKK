@@ -1,0 +1,31 @@
+{
+  "session": "foundation-provider-spike-2026-10-11",
+  "maxInferenceCallsPerProvider": 2,
+  "providers": {
+    "campus_gateway": {
+      "reservedCalls": 2,
+      "lastOutcome": "succeeded",
+      "requestedModel": "qwen3:14b",
+      "responseModel": "qwen3:14b",
+      "usage": "reported",
+      "capabilitiesObserved": [
+        "non-stream chat completion returned a valid response",
+        "prompt and completion token usage were reported"
+      ]
+    },
+    "codex_app_server": {
+      "reservedCalls": 2,
+      "lastOutcome": "blocked_budget_exhausted",
+      "requestedModel": "gpt-6-luna",
+      "responseModel": "gpt-6-luna",
+      "usage": "reported",
+      "capabilitiesObserved": [
+        "bounded chat generation succeeded",
+        "effective model gpt-6-luna",
+        "stream text observed",
+        "native tool and approval requests are refused by the protocol guard",
+        "bounded-native filesystem and provider-egress profile confirmed"
+      ]
+    }
+  }
+}

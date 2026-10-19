@@ -1,0 +1,20 @@
+services:
+  web:
+    environment:
+      PROMPTLAB_LOCAL_WORKSPACE_PICKER_ROOT: /collections
+    volumes:
+      - type: bind
+        source: ${PROMPTLAB_COLLECTIONS_PATH:?Set a selected source directory in .env.container}
+        target: /collections
+        read_only: true
+        bind:
+          create_host_path: false
+
+  worker:
+    volumes:
+      - type: bind
+        source: ${PROMPTLAB_COLLECTIONS_PATH:?Set a selected source directory in .env.container}
+        target: /collections
+        read_only: true
+        bind:
+          create_host_path: false

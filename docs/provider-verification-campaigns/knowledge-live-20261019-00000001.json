@@ -1,0 +1,25 @@
+{
+  "campaignId": "knowledge-live-20261019-00000001",
+  "maxInferenceCallsByProvider": {
+    "campus_gateway": 6,
+    "codex_app_server": 1
+  },
+  "providers": {
+    "campus_gateway": {
+      "reservedCalls": 0,
+      "lastOutcome": "not_attempted",
+      "requestedModel": null,
+      "responseModel": null,
+      "usage": "unknown",
+      "capabilitiesObserved": []
+    },
+    "codex_app_server": {
+      "reservedCalls": 0,
+      "lastOutcome": "not_attempted",
+      "requestedModel": null,
+      "responseModel": null,
+      "usage": "unknown",
+      "capabilitiesObserved": []
+    }
+  }
+}

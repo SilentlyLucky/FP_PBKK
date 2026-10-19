@@ -1,0 +1,50 @@
+{
+  "name": "@promptlab/providers",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./policy": {
+      "types": "./src/policy.ts",
+      "import": "./src/policy.ts"
+    },
+    "./usage-provenance": {
+      "types": "./src/usage-provenance.ts",
+      "import": "./src/usage-provenance.ts"
+    },
+    "./campus-verification": {
+      "types": "./src/campus-verification.ts",
+      "import": "./src/campus-verification.ts"
+    },
+    "./capability-campaign": {
+      "types": "./src/capability-campaign.ts",
+      "import": "./src/capability-campaign.ts"
+    },
+    "./campus": {
+      "types": "./src/campus.ts",
+      "import": "./src/campus.ts"
+    },
+    "./campus-embedding": {
+      "types": "./src/campus-embedding.ts",
+      "import": "./src/campus-embedding.ts"
+    },
+    "./provider-smoke-ledger": {
+      "types": "./src/provider-smoke-ledger.ts",
+      "import": "./src/provider-smoke-ledger.ts"
+    },
+    "./codex": {
+      "types": "./src/codex/app-server.ts",
+      "import": "./src/codex/app-server.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@promptlab/contracts": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

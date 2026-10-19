@@ -1,0 +1,152 @@
+name: promptlab
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    environment:
+      POSTGRES_DB: promptlab
+      POSTGRES_USER: promptlab
+      POSTGRES_PASSWORD: ${PROMPTLAB_POSTGRES_PASSWORD:?Set a generated hex password in .env.container}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    environment:
+      PROMPTLAB_DATABASE_URL: postgresql://promptlab:${PROMPTLAB_POSTGRES_PASSWORD:?Set a generated hex password in .env.container}@postgres:5432/promptlab
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    environment:
+      NODE_ENV: production
+      PROMPTLAB_DATABASE_URL: postgresql://promptlab:${PROMPTLAB_POSTGRES_PASSWORD:?Set a generated hex password in .env.container}@postgres:5432/promptlab
+      PROMPTLAB_REDIS_URL: redis://redis:6379
+      PROMPTLAB_CAMPUS_API_KEY: ${PROMPTLAB_CAMPUS_API_KEY:-}
+      PROMPTLAB_CAMPUS_MODEL: ${PROMPTLAB_CAMPUS_MODEL:-}
+      PROMPTLAB_CAMPUS_OPTIMIZER_TIMEOUT_MS: ${PROMPTLAB_CAMPUS_OPTIMIZER_TIMEOUT_MS:-90000}
+      PROMPTLAB_CAMPUS_EMBEDDING_ENDPOINT: ${PROMPTLAB_CAMPUS_EMBEDDING_ENDPOINT:-}
+      PROMPTLAB_CAMPUS_EMBEDDING_MODEL: ${PROMPTLAB_CAMPUS_EMBEDDING_MODEL:-embeddinggemma:latest}
+      PROMPTLAB_CAMPUS_EMBEDDING_TIMEOUT_MS: ${PROMPTLAB_CAMPUS_EMBEDDING_TIMEOUT_MS:-60000}
+      PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN: ${PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN:-}
+      PROMPTLAB_LOCAL_WORKSPACE_ROOTS: ${PROMPTLAB_LOCAL_WORKSPACE_ROOTS:-}
+      PROMPTLAB_LOCAL_WORKSPACE_ALLOW_UNSPECIFIED_BIND_HOST: "1"
+      PROMPTLAB_DATA_DIR: /var/lib/promptlab/data
+      PROMPTLAB_PROVIDER_LEDGER_PATH: /var/lib/promptlab/provider-ledger/PROVIDER_SMOKE_LEDGER.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - seccomp=unconfined
+    ports:
+      - "127.0.0.1:${PROMPTLAB_WEB_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    volumes:
+      - app-data:/var/lib/promptlab/data
+      - provider-ledger-data:/var/lib/promptlab/provider-ledger
+      - codex-auth:/home/promptlab/.local/share/promptlab/codex-auth
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    environment:
+      NODE_ENV: production
+      PROMPTLAB_DATABASE_URL: postgresql://promptlab:${PROMPTLAB_POSTGRES_PASSWORD:?Set a generated hex password in .env.container}@postgres:5432/promptlab
+      PROMPTLAB_REDIS_URL: redis://redis:6379
+      PROMPTLAB_CAMPUS_API_KEY: ${PROMPTLAB_CAMPUS_API_KEY:-}
+      PROMPTLAB_CAMPUS_MODEL: ${PROMPTLAB_CAMPUS_MODEL:-}
+      PROMPTLAB_CAMPUS_OPTIMIZER_TIMEOUT_MS: ${PROMPTLAB_CAMPUS_OPTIMIZER_TIMEOUT_MS:-90000}
+      PROMPTLAB_CAMPUS_EMBEDDING_ENDPOINT: ${PROMPTLAB_CAMPUS_EMBEDDING_ENDPOINT:-}
+      PROMPTLAB_CAMPUS_EMBEDDING_MODEL: ${PROMPTLAB_CAMPUS_EMBEDDING_MODEL:-embeddinggemma:latest}
+      PROMPTLAB_CAMPUS_EMBEDDING_TIMEOUT_MS: ${PROMPTLAB_CAMPUS_EMBEDDING_TIMEOUT_MS:-60000}
+      PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN: ${PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN:-}
+      PROMPTLAB_LOCAL_WORKSPACE_ROOTS: ${PROMPTLAB_LOCAL_WORKSPACE_ROOTS:-}
+      PROMPTLAB_DATA_DIR: /var/lib/promptlab/data
+      PROMPTLAB_PROVIDER_LEDGER_PATH: /var/lib/promptlab/provider-ledger/PROVIDER_SMOKE_LEDGER.json
+      PROMPTLAB_WORKER_HEALTH_PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - seccomp=unconfined
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    volumes:
+      - app-data:/var/lib/promptlab/data
+      - provider-ledger-data:/var/lib/promptlab/provider-ledger
+      - codex-auth:/home/promptlab/.local/share/promptlab/codex-auth
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-data:
+  provider-ledger-data:
+  codex-auth:

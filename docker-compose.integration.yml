@@ -1,0 +1,35 @@
+name: promptlab-foundation-integration
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    environment:
+      POSTGRES_DB: promptlab
+      POSTGRES_USER: promptlab
+      POSTGRES_PASSWORD: promptlab
+    ports:
+      - "127.0.0.1:56432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptlab -d promptlab"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - promptlab-foundation-integration-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:57379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - promptlab-foundation-integration-redis:/data
+
+volumes:
+  promptlab-foundation-integration-postgres:
+  promptlab-foundation-integration-redis:
