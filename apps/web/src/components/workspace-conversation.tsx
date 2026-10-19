@@ -12,6 +12,7 @@ import {
   Send,
   ShieldAlert,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -36,6 +37,7 @@ import {
   mergeWorkspaceConversationLists,
   mergeWorkspaceConversationTurns,
   MAX_WORKSPACE_MESSAGE_CHARACTERS,
+  parseWorkspaceConversation,
   readConversations,
   subscribeWorkspaceStorage,
   writeActiveConversation,
@@ -87,6 +89,12 @@ interface SourceSnapshot {
   error: string | null;
 }
 
+interface ConversationHistorySnapshot {
+  projectId: string;
+  status: "loading" | "ready" | "error";
+  error: string | null;
+}
+
 const emptyWorkspaceConversations: WorkspaceConversation[] = [];
 const emptyProviderConnections: ProviderConnectionState[] = [];
 const emptyCodexModels: NonNullable<ProviderPayload["codexModels"]> = [];
@@ -112,6 +120,17 @@ function responseError(
   if (typeof payload.message === "string") return payload.message;
   if (typeof payload.error === "string") return payload.error;
   return fallback;
+}
+
+function conversationCollectionUrl(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/workspace/conversations`;
+}
+
+function conversationRecordUrl(
+  projectId: string,
+  conversationId: string,
+): string {
+  return `${conversationCollectionUrl(projectId)}/${encodeURIComponent(conversationId)}`;
 }
 
 function providerLabel(provider: WorkspaceProvider): string {
@@ -200,6 +219,15 @@ export function WorkspaceConversation() {
   const [sourceSnapshot, setSourceSnapshot] = useState<SourceSnapshot | null>(
     null,
   );
+  const [conversationHistorySnapshot, setConversationHistorySnapshot] =
+    useState<ConversationHistorySnapshot | null>(null);
+  const [historyReloadKey, setHistoryReloadKey] = useState(0);
+  const [deletingConversationId, setDeletingConversationId] = useState<
+    string | null
+  >(null);
+  const [historyActionError, setHistoryActionError] = useState<string | null>(
+    null,
+  );
   const [historyStorageError, setHistoryStorageError] = useState(false);
   const [historyOverride, setHistoryOverride] = useState<{
     projectId: string;
@@ -270,6 +298,8 @@ export function WorkspaceConversation() {
   >(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const composerRef = useRef<HTMLFormElement>(null);
+  const conversationWriteQueueRef = useRef(new Map<string, Promise<void>>());
+  const deletedConversationIdsRef = useRef(new Set<string>());
 
   const currentProviderSnapshot =
     providerSnapshot?.projectId === activeProjectId ? providerSnapshot : null;
@@ -283,6 +313,15 @@ export function WorkspaceConversation() {
   const sourceError = currentSourceSnapshot?.error ?? null;
   const providerLoading = Boolean(activeProjectId) && !currentProviderSnapshot;
   const sourceLoading = Boolean(activeProjectId) && !currentSourceSnapshot;
+  const conversationHistoryStatus = !activeProjectId
+    ? "ready"
+    : conversationHistorySnapshot?.projectId === activeProjectId
+      ? conversationHistorySnapshot.status
+      : "loading";
+  const conversationHistoryError =
+    conversationHistorySnapshot?.projectId === activeProjectId
+      ? conversationHistorySnapshot.error
+      : null;
   const activeConversation =
     conversations.find((item) => item.id === activeConversationId) ?? null;
   const pendingSettings =
@@ -449,6 +488,122 @@ export function WorkspaceConversation() {
     };
   }, [activeProjectId]);
 
+  useEffect(() => {
+    if (!activeProjectId) return;
+
+    const controller = new AbortController();
+    let current = true;
+    const projectId = activeProjectId;
+    setConversationHistorySnapshot({
+      projectId,
+      status: "loading",
+      error: null,
+    });
+
+    void (async () => {
+      const response = await fetch(conversationCollectionUrl(projectId), {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const payload = await readResponse(response);
+      if (!response.ok || !Array.isArray(payload.conversations)) {
+        throw new Error(
+          responseError(payload, "Riwayat percakapan tidak dapat dimuat."),
+        );
+      }
+      const stored = payload.conversations.map(parseWorkspaceConversation);
+      if (stored.some((conversation) => conversation === null)) {
+        throw new Error("Sebagian riwayat percakapan tidak dapat dibaca.");
+      }
+      const remoteConversations = stored.filter(
+        (conversation): conversation is WorkspaceConversation =>
+          conversation !== null,
+      );
+      for (const conversation of remoteConversations) {
+        deletedConversationIdsRef.current.delete(
+          `${projectId}:${conversation.id}`,
+        );
+      }
+      const localConversations = readConversations(
+        window.localStorage,
+        projectId,
+      ).filter(
+        (conversation) =>
+          !deletedConversationIdsRef.current.has(
+            `${projectId}:${conversation.id}`,
+          ),
+      );
+      const mergedConversations = mergeWorkspaceConversationLists(
+        remoteConversations,
+        localConversations,
+      ).slice(0, 100);
+
+      const migrationResponse = await fetch(
+        conversationCollectionUrl(projectId),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ conversations: mergedConversations }),
+          signal: controller.signal,
+        },
+      );
+      const migrationPayload = await readResponse(migrationResponse);
+      if (!migrationResponse.ok) {
+        throw new Error(
+          responseError(
+            migrationPayload,
+            "Riwayat percakapan tidak dapat disimpan ke database.",
+          ),
+        );
+      }
+      if (!current) return;
+
+      try {
+        writeConversations(window.localStorage, projectId, mergedConversations);
+        setHistoryOverride(null);
+        setHistoryStorageError(false);
+      } catch {
+        setHistoryOverride({
+          projectId,
+          conversations: mergedConversations,
+        });
+        setHistoryStorageError(true);
+      }
+
+      const savedActiveId = readActiveConversationSnapshot(
+        window.localStorage,
+        projectId,
+      );
+      const restoredActiveId = mergedConversations.some(
+        (conversation) => conversation.id === savedActiveId,
+      )
+        ? savedActiveId
+        : (mergedConversations[0]?.id ?? null);
+      setActiveConversationId(restoredActiveId);
+      setConversationHistorySnapshot({
+        projectId,
+        status: "ready",
+        error: null,
+      });
+      setHistoryActionError(null);
+    })().catch((cause: unknown) => {
+      if (!current || controller.signal.aborted) return;
+      setConversationHistorySnapshot({
+        projectId,
+        status: "error",
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Riwayat percakapan tidak dapat dimuat.",
+      });
+    });
+
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [activeProjectId, historyReloadKey]);
+
   function setActiveConversationId(conversationId: string | null) {
     if (!activeProjectId) return;
     try {
@@ -467,69 +622,103 @@ export function WorkspaceConversation() {
     }
   }
 
-  function commitConversation(
+  function queueConversationSave(
+    projectId: string,
+    conversation: WorkspaceConversation,
+  ): Promise<void> {
+    const key = `${projectId}:${conversation.id}`;
+    const previous = conversationWriteQueueRef.current.get(key);
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        if (deletedConversationIdsRef.current.has(key)) return;
+        const response = await fetch(
+          conversationRecordUrl(projectId, conversation.id),
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(conversation),
+          },
+        );
+        const payload = await readResponse(response);
+        if (!response.ok) {
+          throw new Error(
+            responseError(
+              payload,
+              "Riwayat percakapan tidak dapat disimpan ke database.",
+            ),
+          );
+        }
+        if (activeProjectId === projectId) {
+          setConversationHistorySnapshot({
+            projectId,
+            status: "ready",
+            error: null,
+          });
+        }
+      })
+      .catch((cause: unknown) => {
+        if (
+          activeProjectId === projectId &&
+          !deletedConversationIdsRef.current.has(key)
+        ) {
+          setConversationHistorySnapshot({
+            projectId,
+            status: "error",
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "Riwayat percakapan tidak dapat disimpan ke database.",
+          });
+        }
+        throw cause;
+      });
+    const tracked = operation.finally(() => {
+      if (conversationWriteQueueRef.current.get(key) === tracked) {
+        conversationWriteQueueRef.current.delete(key);
+      }
+    });
+    conversationWriteQueueRef.current.set(key, tracked);
+    return tracked;
+  }
+
+  async function commitConversation(
     conversation: WorkspaceConversation,
     projectId = activeProjectId,
-  ) {
-    if (!projectId) return;
+  ): Promise<boolean> {
+    if (!projectId) return false;
+    const stored = readConversations(window.localStorage, projectId);
+    const current =
+      historyOverride?.projectId === projectId
+        ? mergeWorkspaceConversationLists(stored, historyOverride.conversations)
+        : stored;
+    const currentConversation = current.find(
+      (item) => item.id === conversation.id,
+    );
+    const mergedConversation = mergeWorkspaceConversationTurns(
+      currentConversation ?? null,
+      conversation,
+    );
+    const exists = current.some((item) => item.id === conversation.id);
+    const next = exists
+      ? current.map((item) =>
+          item.id === conversation.id ? mergedConversation : item,
+        )
+      : [mergedConversation, ...current];
+    const sorted = next.sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    );
     try {
-      const stored = readConversations(window.localStorage, projectId);
-      const current =
-        historyOverride?.projectId === projectId
-          ? mergeWorkspaceConversationLists(
-              stored,
-              historyOverride.conversations,
-            )
-          : stored;
-      const currentConversation = current.find(
-        (item) => item.id === conversation.id,
-      );
-      const mergedConversation = mergeWorkspaceConversationTurns(
-        currentConversation ?? null,
-        conversation,
-      );
-      const exists = current.some((item) => item.id === conversation.id);
-      const next = exists
-        ? current.map((item) =>
-            item.id === conversation.id ? mergedConversation : item,
-          )
-        : [mergedConversation, ...current];
-      const sorted = next.sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt),
-      );
       writeConversations(window.localStorage, projectId, sorted);
       if (projectId === activeProjectId) {
         setHistoryOverride(null);
         setHistoryStorageError(false);
       }
     } catch {
-      const stored = readConversations(window.localStorage, projectId);
-      const current =
-        historyOverride?.projectId === projectId
-          ? mergeWorkspaceConversationLists(
-              stored,
-              historyOverride.conversations,
-            )
-          : stored;
-      const currentConversation = current.find(
-        (item) => item.id === conversation.id,
-      );
-      const mergedConversation = mergeWorkspaceConversationTurns(
-        currentConversation ?? null,
-        conversation,
-      );
-      const exists = current.some((item) => item.id === conversation.id);
-      const next = exists
-        ? current.map((item) =>
-            item.id === conversation.id ? mergedConversation : item,
-          )
-        : [mergedConversation, ...current];
       if (projectId === activeProjectId) {
         setHistoryOverride({
           projectId,
-          conversations: next.sort((left, right) =>
-            right.updatedAt.localeCompare(left.updatedAt),
-          ),
+          conversations: sorted,
         });
         setHistoryStorageError(true);
       }
@@ -538,6 +727,12 @@ export function WorkspaceConversation() {
       setActiveConversationId(conversation.id);
       setHistoryOpen(false);
     }
+    try {
+      await queueConversationSave(projectId, mergedConversation);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function updateTurn(
@@ -545,8 +740,8 @@ export function WorkspaceConversation() {
     turnId: string,
     update: Partial<WorkspaceTurn>,
     projectId = activeProjectId,
-  ) {
-    if (!projectId) return;
+  ): Promise<boolean> {
+    if (!projectId) return Promise.resolve(false);
     const updatedAt = new Date().toISOString();
     const stored = readConversations(window.localStorage, projectId);
     const current =
@@ -576,6 +771,13 @@ export function WorkspaceConversation() {
         setHistoryStorageError(true);
       }
     }
+    const updatedConversation = updated.find(
+      (conversation) => conversation.id === conversationId,
+    );
+    if (!updatedConversation) return Promise.resolve(false);
+    return queueConversationSave(projectId, updatedConversation)
+      .then(() => true)
+      .catch(() => false);
   }
 
   function updatePreference(value: WorkspacePreference) {
@@ -681,7 +883,7 @@ export function WorkspaceConversation() {
   }
 
   function startNewConversation() {
-    if (!activeProjectId) return;
+    if (!activeProjectId || conversationHistoryStatus !== "ready") return;
     const conversation = newConversation("balanced", []);
     setNewConversationSettings({
       projectId: activeProjectId,
@@ -691,10 +893,96 @@ export function WorkspaceConversation() {
       retrievalStrategy: "auto",
       sourceIds: [],
     });
-    commitConversation(conversation);
+    void commitConversation(conversation);
     setDraft("");
     setSendError(null);
     setConversationRunError(null);
+  }
+
+  async function deleteConversation(conversation: WorkspaceConversation) {
+    const projectId = activeProjectId;
+    if (!projectId || conversationHistoryStatus !== "ready") return;
+    const confirmed = window.confirm(
+      `Hapus “${conversation.title}” beserta pesan, snapshot prompt, dan aktivitas run terkait dari database? Tindakan ini tidak dapat dibatalkan.`,
+    );
+    if (!confirmed) return;
+
+    const key = `${projectId}:${conversation.id}`;
+    deletedConversationIdsRef.current.add(key);
+    setDeletingConversationId(conversation.id);
+    setHistoryActionError(null);
+    setConversationHistorySnapshot({
+      projectId,
+      status: "loading",
+      error: null,
+    });
+    try {
+      await conversationWriteQueueRef.current.get(key)?.catch(() => undefined);
+      const response = await fetch(
+        conversationRecordUrl(projectId, conversation.id),
+        { method: "DELETE" },
+      );
+      if (response.status === 409) {
+        const payload = await readResponse(response);
+        deletedConversationIdsRef.current.delete(key);
+        setHistoryActionError(
+          responseError(payload, "Percakapan belum dapat dihapus."),
+        );
+        setConversationHistorySnapshot({
+          projectId,
+          status: "ready",
+          error: null,
+        });
+        return;
+      }
+      if (!response.ok) {
+        const payload = await readResponse(response);
+        throw new Error(
+          responseError(payload, "Percakapan tidak dapat dihapus."),
+        );
+      }
+
+      const stored = readConversations(window.localStorage, projectId);
+      const current =
+        historyOverride?.projectId === projectId
+          ? mergeWorkspaceConversationLists(
+              stored,
+              historyOverride.conversations,
+            )
+          : stored;
+      const remaining = current.filter((item) => item.id !== conversation.id);
+      try {
+        writeConversations(window.localStorage, projectId, remaining);
+        setHistoryOverride(null);
+        setHistoryStorageError(false);
+      } catch {
+        setHistoryOverride({ projectId, conversations: remaining });
+        setHistoryStorageError(true);
+      }
+
+      if (activeConversationId === conversation.id) {
+        setActiveConversationId(null);
+        setDraft("");
+        setSendError(null);
+        setConversationRunError(null);
+      }
+      setConversationHistorySnapshot({
+        projectId,
+        status: "ready",
+        error: null,
+      });
+    } catch (cause) {
+      setConversationHistorySnapshot({
+        projectId,
+        status: "error",
+        error:
+          cause instanceof Error
+            ? cause.message
+            : "Percakapan tidak dapat dihapus.",
+      });
+    } finally {
+      setDeletingConversationId(null);
+    }
   }
 
   function selectConversation(conversation: WorkspaceConversation) {
@@ -702,6 +990,7 @@ export function WorkspaceConversation() {
     setHistoryOpen(false);
     setSendError(null);
     setConversationRunError(null);
+    setHistoryActionError(null);
   }
 
   async function refreshSourcesForSend(projectId: string) {
@@ -796,9 +1085,12 @@ export function WorkspaceConversation() {
       );
       return;
     }
-    if (historyStorageError) {
+    if (conversationHistoryStatus !== "ready") {
       setSendError(
-        "Riwayat percakapan tidak dapat disimpan di browser ini. Pulihkan penyimpanan lokal sebelum mengirim.",
+        conversationHistoryStatus === "loading"
+          ? "Tunggu sampai riwayat percakapan selesai dimuat sebelum mengirim."
+          : (conversationHistoryError ??
+              "Riwayat percakapan tidak tersedia. Muat ulang riwayat sebelum mengirim."),
       );
       return;
     }
@@ -934,7 +1226,11 @@ export function WorkspaceConversation() {
           };
           sendFailureContext.conversationWithTurn = conversationWithTurn;
           sendFailureContext.turnId = turnId;
-          commitConversation(conversationWithTurn);
+          if (!(await commitConversation(conversationWithTurn))) {
+            throw new Error(
+              "Pesan belum dikirim karena riwayat tidak dapat disimpan ke database.",
+            );
+          }
           setDraft("");
 
           const promptResponse = await fetch(
@@ -987,7 +1283,11 @@ export function WorkspaceConversation() {
               item.id === turnId ? updatedTurn : item,
             ),
           };
-          commitConversation(updatedConversation);
+          if (!(await commitConversation(updatedConversation))) {
+            throw new Error(
+              "Prompt belum dijalankan karena riwayat tidak dapat disimpan ke database.",
+            );
+          }
           const targetReasoningEffort =
             selectedThinkingEffortMode !== "auto" && selectedThinkingEffort
               ? selectedThinkingEffort
@@ -1017,10 +1317,16 @@ export function WorkspaceConversation() {
                 : null,
             },
           };
-          updateTurn(updatedConversation.id, turnId, {
-            status: "run_creation_unconfirmed",
-            runCreateRequest: pendingRunRequest,
-          });
+          if (
+            !(await updateTurn(updatedConversation.id, turnId, {
+              status: "run_creation_unconfirmed",
+              runCreateRequest: pendingRunRequest,
+            }))
+          ) {
+            throw new Error(
+              "Run belum dibuat karena status percakapan gagal disimpan.",
+            );
+          }
           runPostStarted = true;
           const runResponse = await fetch(
             "/api/projects/" + encodeURIComponent(activeProjectId) + "/runs",
@@ -1054,14 +1360,20 @@ export function WorkspaceConversation() {
               responseError(runPayload, "Run tidak dapat dibuat."),
             );
           }
-          updateTurn(updatedConversation.id, turnId, {
-            runId: createdRun.id,
-            status:
-              typeof createdRun.status === "string"
-                ? createdRun.status
-                : "created",
-            runCreateRequest: null,
-          });
+          if (
+            !(await updateTurn(updatedConversation.id, turnId, {
+              runId: createdRun.id,
+              status:
+                typeof createdRun.status === "string"
+                  ? createdRun.status
+                  : "created",
+              runCreateRequest: null,
+            }))
+          ) {
+            throw new Error(
+              "Run sudah dibuat, tetapi tautannya ke riwayat chat gagal disimpan. Periksa aktivitas run sebelum mencoba lagi.",
+            );
+          }
         },
       );
     } catch (cause) {
@@ -1069,7 +1381,7 @@ export function WorkspaceConversation() {
         sendFailureContext.conversationWithTurn &&
         sendFailureContext.turnId
       ) {
-        updateTurn(
+        void updateTurn(
           sendFailureContext.conversationWithTurn.id,
           sendFailureContext.turnId,
           {
@@ -1174,6 +1486,7 @@ export function WorkspaceConversation() {
   );
   const composerDisabled =
     !activeProjectId ||
+    conversationHistoryStatus !== "ready" ||
     sending ||
     Boolean(blockingTurn) ||
     !senopatiReady ||
@@ -1241,7 +1554,7 @@ export function WorkspaceConversation() {
           <Button
             type="button"
             onClick={startNewConversation}
-            disabled={!activeProjectId}
+            disabled={!activeProjectId || conversationHistoryStatus !== "ready"}
           >
             <MessageSquarePlus aria-hidden="true" size={16} />
             Percakapan baru
@@ -1266,37 +1579,91 @@ export function WorkspaceConversation() {
             </div>
           </div>
           <div className={styles.historyList}>
-            {sortedConversations.map((conversation) => (
-              <button
-                type="button"
-                key={conversation.id}
-                className={
-                  styles.historyItem +
-                  (conversation.id === activeConversationId
-                    ? " " + styles.historyItemActive
-                    : "")
-                }
-                aria-current={
-                  conversation.id === activeConversationId ? "page" : undefined
-                }
-                onClick={() => selectConversation(conversation)}
-              >
-                <MessageSquarePlus aria-hidden="true" size={16} />
-                <span className={styles.historyItemCopy}>
-                  <strong>{conversation.title}</strong>
-                  <small>{formatDate(conversation.updatedAt)}</small>
-                </span>
-              </button>
-            ))}
-            {!sortedConversations.length ? (
-              <p className={styles.historyEmpty}>
-                Belum ada percakapan di browser ini.
+            {conversationHistoryStatus === "ready" && historyActionError ? (
+              <p className={styles.historyActionError} role="alert">
+                {historyActionError}
               </p>
+            ) : null}
+            {conversationHistoryStatus === "loading" ? (
+              <p className={styles.historyLoading} role="status">
+                <LoaderCircle
+                  className={styles.spin}
+                  aria-hidden="true"
+                  size={15}
+                />
+                Memuat riwayat percakapan…
+              </p>
+            ) : null}
+            {conversationHistoryStatus === "error" ? (
+              <div className={styles.historyError} role="alert">
+                <p>
+                  {conversationHistoryError ??
+                    "Riwayat percakapan tidak dapat dimuat."}
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setHistoryReloadKey((value) => value + 1)}
+                >
+                  Coba lagi
+                </Button>
+              </div>
+            ) : null}
+            {conversationHistoryStatus === "ready"
+              ? sortedConversations.map((conversation) => (
+                  <div className={styles.historyItemRow} key={conversation.id}>
+                    <button
+                      type="button"
+                      className={
+                        styles.historyItem +
+                        (conversation.id === activeConversationId
+                          ? " " + styles.historyItemActive
+                          : "")
+                      }
+                      aria-current={
+                        conversation.id === activeConversationId
+                          ? "page"
+                          : undefined
+                      }
+                      onClick={() => selectConversation(conversation)}
+                    >
+                      <MessageSquarePlus aria-hidden="true" size={16} />
+                      <span className={styles.historyItemCopy}>
+                        <strong>{conversation.title}</strong>
+                        <small>{formatDate(conversation.updatedAt)}</small>
+                      </span>
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={styles.historyDeleteButton}
+                      aria-label={`Hapus percakapan ${conversation.title}`}
+                      disabled={deletingConversationId !== null}
+                      onClick={() => void deleteConversation(conversation)}
+                    >
+                      {deletingConversationId === conversation.id ? (
+                        <LoaderCircle
+                          className={styles.spin}
+                          aria-hidden="true"
+                          size={16}
+                        />
+                      ) : (
+                        <Trash2 aria-hidden="true" size={16} />
+                      )}
+                    </Button>
+                  </div>
+                ))
+              : null}
+            {conversationHistoryStatus === "ready" &&
+            !sortedConversations.length ? (
+              <p className={styles.historyEmpty}>Belum ada percakapan.</p>
             ) : null}
           </div>
           <p className={styles.historyFootnote}>
-            Riwayat percakapan dan pengaturan tersimpan di browser ini. Riwayat
-            ini tidak disinkronkan ke server.
+            Riwayat chat tersimpan di database lokal aplikasi dan tetap tersedia
+            setelah halaman dimuat ulang.
           </p>
         </aside>
 
@@ -1336,7 +1703,9 @@ export function WorkspaceConversation() {
               </div>
             ) : null}
 
-            {activeProjectId && !activeConversation?.turns.length ? (
+            {activeProjectId &&
+            conversationHistoryStatus === "ready" &&
+            !activeConversation?.turns.length ? (
               <div className={styles.emptyState}>
                 <div className={styles.emptyIcon} aria-hidden="true">
                   <Sparkles size={20} />
@@ -1362,7 +1731,9 @@ export function WorkspaceConversation() {
                   <time>{formatDate(turn.createdAt)}</time>
                 </div>
 
-                {turn.runId && activeProjectId ? (
+                {turn.runId &&
+                activeProjectId &&
+                conversationHistoryStatus === "ready" ? (
                   <WorkspaceRunResult
                     key={activeProjectId + ":" + turn.runId}
                     projectId={activeProjectId}
@@ -1374,6 +1745,7 @@ export function WorkspaceConversation() {
                     focusOnMount={false}
                     chatPresentation
                     userPrompt={turn.userText}
+                    initialAnswer={turn.assistantText}
                     conversationContextPrompts={activeConversation.turns
                       .slice(Math.max(0, turnIndex - 8), turnIndex)
                       .map((priorTurn) => priorTurn.userText)}
@@ -1387,6 +1759,14 @@ export function WorkspaceConversation() {
                       updateTurn(activeConversation.id, turn.id, { status })
                     }
                   />
+                ) : turn.runId && conversationHistoryStatus === "loading" ? (
+                  <p
+                    className={styles.pendingMessage}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Memuat jawaban tersimpan…
+                  </p>
                 ) : turn.status === "preparing" ||
                   turn.status === "creating_run" ||
                   turn.status === "run_creation_unconfirmed" ? (
@@ -1543,6 +1923,7 @@ export function WorkspaceConversation() {
               disabled={
                 sending ||
                 !activeProjectId ||
+                conversationHistoryStatus !== "ready" ||
                 !senopatiReady ||
                 !codexTargetReady
               }
@@ -1560,7 +1941,9 @@ export function WorkspaceConversation() {
                   id="workspace-preference"
                   value={preference}
                   disabled={
-                    sending || selectedSourceValidation.issues.length > 0
+                    sending ||
+                    conversationHistoryStatus !== "ready" ||
+                    selectedSourceValidation.issues.length > 0
                   }
                   onChange={(event) =>
                     updatePreference(event.target.value as WorkspacePreference)
@@ -1580,7 +1963,7 @@ export function WorkspaceConversation() {
                   <select
                     id="workspace-thinking"
                     value={selectedThinkingValue}
-                    disabled={sending}
+                    disabled={sending || conversationHistoryStatus !== "ready"}
                     onChange={(event) =>
                       updateThinkingEffort(event.target.value)
                     }
@@ -1643,7 +2026,9 @@ export function WorkspaceConversation() {
                             <span>Mode pencarian</span>
                             <select
                               value={selectedRetrievalStrategy}
-                              disabled={sending}
+                              disabled={
+                                sending || conversationHistoryStatus !== "ready"
+                              }
                               onChange={(event) =>
                                 updateRetrievalStrategy(event.target.value)
                               }
@@ -1695,6 +2080,7 @@ export function WorkspaceConversation() {
                               checked={selectedSourceIds.includes(source.id)}
                               disabled={
                                 sending ||
+                                conversationHistoryStatus !== "ready" ||
                                 (!canSendSource &&
                                   !selectedSourceIds.includes(source.id)) ||
                                 selectedSourceValidation.issues.length > 0
@@ -1750,7 +2136,9 @@ export function WorkspaceConversation() {
                         <Button
                           type="button"
                           variant="secondary"
-                          disabled={sending}
+                          disabled={
+                            sending || conversationHistoryStatus !== "ready"
+                          }
                           onClick={() => {
                             const issueIds = new Set(
                               selectedSourceValidation.issues.map(
@@ -1770,7 +2158,9 @@ export function WorkspaceConversation() {
                           <Button
                             type="button"
                             variant="ghost"
-                            disabled={sending}
+                            disabled={
+                              sending || conversationHistoryStatus !== "ready"
+                            }
                             onClick={() =>
                               void refreshSourcesForSend(activeProjectId)
                                 .then(() => setSendError(null))
@@ -1822,8 +2212,8 @@ export function WorkspaceConversation() {
             ) : null}
             {historyStorageError ? (
               <p className={styles.composerError} role="status">
-                Riwayat percakapan tidak dapat disimpan di browser ini. Run
-                backend tetap tercatat terpisah untuk Monitoring.
+                Salinan browser tidak tersimpan. Riwayat utama tetap disimpan di
+                database aplikasi.
               </p>
             ) : null}
             <div className={styles.composerFooter}>

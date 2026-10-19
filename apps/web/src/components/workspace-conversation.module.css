@@ -119,10 +119,18 @@
   scrollbar-width: thin;
 }
 
+.historyItemRow {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 4px;
+}
+
 .historyItem {
   display: flex;
   min-width: 0;
   min-height: 56px;
+  flex: 1 1 auto;
   align-items: flex-start;
   gap: 10px;
   border: 1px solid transparent;
@@ -135,6 +143,16 @@
     background-color 140ms ease,
     border-color 140ms ease,
     color 140ms ease;
+}
+
+.historyDeleteButton {
+  align-self: center;
+  color: var(--danger);
+}
+
+.historyDeleteButton:hover {
+  background: #fef2f2;
+  color: #991b1b;
 }
 
 .historyItem:hover {
@@ -196,10 +214,23 @@
 }
 
 .historyError {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
   border-radius: 8px;
   background: #fff7ed;
   padding: 10px;
   color: #7c2d12;
+}
+
+.historyActionError {
+  margin: 8px;
+  border-radius: 8px;
+  background: #fff7ed;
+  padding: 10px;
+  color: #7c2d12;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .historyLoading {

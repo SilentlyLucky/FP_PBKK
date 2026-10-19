@@ -23,6 +23,10 @@ export type SmokeOutcome =
 
 export const MAX_INFERENCE_CALLS_PER_PROVIDER = 2 as const;
 export const MAX_CAMPAIGN_INFERENCE_CALLS_PER_PROVIDER = 110 as const;
+export const DEFAULT_PROVIDER_VERIFICATION_CAMPAIGN_BUDGET = {
+  campus_gateway: MAX_CAMPAIGN_INFERENCE_CALLS_PER_PROVIDER,
+  codex_app_server: MAX_CAMPAIGN_INFERENCE_CALLS_PER_PROVIDER,
+} as const;
 const LEDGER_SESSION = "foundation-provider-spike-2026-10-11";
 const CAMPAIGN_ENVIRONMENT_VARIABLE =
   "PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN";
@@ -708,7 +712,11 @@ export function createProviderSmokeLedger(
         const ledger =
           campaignId === undefined
             ? await readLedger(ledgerPath)
-            : await readOrInitializeCampaignLedger(ledgerPath, campaignId);
+            : await readOrInitializeCampaignLedger(
+                ledgerPath,
+                campaignId,
+                campaignBudget,
+              );
         const entry = ledger.providers[provider];
         entry.lastOutcome = update.outcome;
         if (update.requestedModel !== undefined)
@@ -760,14 +768,18 @@ function createUnavailableProviderSmokeLedger(
 function createPersistedProviderSmokeLedger(): ReturnType<
   typeof createProviderSmokeLedger
 > {
-  const campaignId = process.env[CAMPAIGN_ENVIRONMENT_VARIABLE];
-  if (campaignId === undefined) {
+  const campaignId = process.env[CAMPAIGN_ENVIRONMENT_VARIABLE]?.trim();
+  if (!campaignId) {
     return createProviderSmokeLedger(resolveDefaultProviderSmokeLedgerPath());
   }
   try {
     const ledgerPath =
       resolveProviderVerificationCampaignLedgerPath(campaignId);
-    return createProviderSmokeLedger(ledgerPath, campaignId);
+    return createProviderSmokeLedger(
+      ledgerPath,
+      campaignId,
+      DEFAULT_PROVIDER_VERIFICATION_CAMPAIGN_BUDGET,
+    );
   } catch (error) {
     return createUnavailableProviderSmokeLedger(error);
   }

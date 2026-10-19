@@ -1,6 +1,15 @@
 import { Worker, Queue, type Job } from "bullmq";
 import { Redis } from "ioredis";
-import { and, asc, desc, eq, inArray, isNull, max } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  max,
+} from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
@@ -521,6 +530,105 @@ async function failQueuedRun(
       eventType: "run.failed",
       payload: { status: "failed", errorCode },
     });
+  });
+}
+
+async function markInterruptedRunAfterRedelivery(input: {
+  projectId: string;
+  runId: string;
+  provider: string;
+}): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [run] = await tx
+      .select({ status: schema.runs.status })
+      .from(schema.runs)
+      .where(
+        and(
+          eq(schema.runs.projectId, input.projectId),
+          eq(schema.runs.id, input.runId),
+        ),
+      )
+      .for("update");
+    if (!run || run.status !== "running") return false;
+
+    const [attempt] = await tx
+      .select({ id: schema.modelAttempts.id })
+      .from(schema.modelAttempts)
+      .where(
+        and(
+          eq(schema.modelAttempts.projectId, input.projectId),
+          eq(schema.modelAttempts.runId, input.runId),
+          eq(schema.modelAttempts.status, "running"),
+        ),
+      )
+      .orderBy(desc(schema.modelAttempts.attemptNumber))
+      .limit(1)
+      .for("update");
+
+    const errorCode = "WORKER_INTERRUPTED";
+    const errorSummary =
+      "Worker terhenti sebelum jawaban tersimpan. Hasil provider mungkin sudah dibuat; run tidak dijalankan ulang otomatis.";
+    const finishedAt = new Date();
+
+    if (attempt) {
+      await tx
+        .update(schema.modelAttempts)
+        .set({
+          status: "interrupted_unknown",
+          errorCode,
+          remoteOutcomeKnown: false,
+          finishedAt,
+        })
+        .where(
+          and(
+            eq(schema.modelAttempts.projectId, input.projectId),
+            eq(schema.modelAttempts.id, attempt.id),
+            eq(schema.modelAttempts.status, "running"),
+          ),
+        );
+    }
+
+    await tx
+      .update(schema.runs)
+      .set({
+        status: "interrupted_unknown",
+        errorCode,
+        errorSummary,
+        finishedAt,
+      })
+      .where(
+        and(
+          eq(schema.runs.projectId, input.projectId),
+          eq(schema.runs.id, input.runId),
+          eq(schema.runs.status, "running"),
+        ),
+      );
+
+    const [last] = await tx
+      .select({ sequence: max(schema.runEvents.sequence) })
+      .from(schema.runEvents)
+      .where(
+        and(
+          eq(schema.runEvents.projectId, input.projectId),
+          eq(schema.runEvents.runId, input.runId),
+        ),
+      );
+    await tx.insert(schema.runEvents).values({
+      projectId: input.projectId,
+      runId: input.runId,
+      sequence: (last?.sequence ?? 0) + 1,
+      eventType: "run.failed",
+      attemptId: attempt?.id ?? null,
+      payload: {
+        status: "interrupted_unknown",
+        errorCode,
+        errorSummary,
+        remoteOutcomeUnknown: true,
+        failedProvider: input.provider,
+        failedStage: "worker_recovery",
+      },
+    });
+    return true;
   });
 }
 
@@ -1068,7 +1176,23 @@ async function executeRun(raw: unknown): Promise<void> {
     .where(and(eq(schema.runs.projectId, projectId), eq(schema.runs.id, runId)))
     .limit(1);
 
-  if (!run || run.status !== "queued") return;
+  if (!run) return;
+  if (run.status === "running") {
+    const interrupted = await markInterruptedRunAfterRedelivery({
+      projectId,
+      runId,
+      provider: run.provider,
+    });
+    if (interrupted) {
+      log("run_interrupted_after_worker_recovery", {
+        projectId,
+        runId,
+        errorCode: "WORKER_INTERRUPTED",
+      });
+    }
+    return;
+  }
+  if (run.status !== "queued") return;
   const clarificationEvents: WorkerClarificationEvent[] = await db
     .select({
       id: schema.runEvents.id,
@@ -4775,6 +4899,97 @@ async function dispatchOutboxBatch(): Promise<void> {
   }
 }
 
+const RUN_RECOVERY_GRACE_PERIOD_MS = 2 * 60 * 1_000;
+const LIVE_QUEUE_STATES = new Set([
+  "active",
+  "waiting",
+  "delayed",
+  "paused",
+  "waiting-children",
+  "prioritized",
+]);
+let runRecoveryInProgress = false;
+
+async function recoverOrphanedRunningRuns(): Promise<void> {
+  if (runRecoveryInProgress) return;
+  runRecoveryInProgress = true;
+  try {
+    const cutoff = new Date(Date.now() - RUN_RECOVERY_GRACE_PERIOD_MS);
+    const candidates = await db
+      .select({
+        id: schema.runs.id,
+        projectId: schema.runs.projectId,
+        provider: schema.runs.provider,
+      })
+      .from(schema.runs)
+      .where(
+        and(
+          eq(schema.runs.status, "running"),
+          lt(schema.runs.startedAt, cutoff),
+        ),
+      )
+      .limit(100);
+    if (!candidates.length) return;
+
+    const runIds = candidates.map((run) => run.id);
+    const enqueueEvents = await db
+      .select({
+        id: schema.outbox.id,
+        aggregateId: schema.outbox.aggregateId,
+      })
+      .from(schema.outbox)
+      .where(
+        and(
+          inArray(schema.outbox.aggregateId, runIds),
+          eq(schema.outbox.eventType, "run.enqueue"),
+        ),
+      );
+    const jobIdsByRun = new Map<string, string[]>();
+    for (const event of enqueueEvents) {
+      const jobIds = jobIdsByRun.get(event.aggregateId) ?? [];
+      jobIds.push(event.id);
+      jobIdsByRun.set(event.aggregateId, jobIds);
+    }
+
+    for (const run of candidates) {
+      const jobIds = jobIdsByRun.get(run.id) ?? [];
+      let hasLiveJob = false;
+      for (const jobId of jobIds) {
+        const job = await queue.getJob(jobId);
+        if (job && LIVE_QUEUE_STATES.has(await job.getState())) {
+          hasLiveJob = true;
+          break;
+        }
+      }
+      if (hasLiveJob) continue;
+
+      const interrupted = await markInterruptedRunAfterRedelivery({
+        projectId: run.projectId,
+        runId: run.id,
+        provider: run.provider,
+      });
+      if (interrupted) {
+        log("orphaned_run_marked_interrupted", {
+          projectId: run.projectId,
+          runId: run.id,
+          errorCode: "WORKER_INTERRUPTED",
+        });
+      }
+    }
+  } catch (error) {
+    log("orphaned_run_recovery_failed", {
+      errorCode: error instanceof Error ? error.name : "UNKNOWN",
+    });
+  } finally {
+    runRecoveryInProgress = false;
+  }
+}
+
+const runRecoveryTimer = setInterval(() => {
+  void recoverOrphanedRunningRuns();
+}, 60_000);
+void recoverOrphanedRunningRuns();
+
 const worker = new Worker(
   queueName,
   async (job: Job) => {
@@ -4896,6 +5111,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(dispatchTimer);
+  clearInterval(runRecoveryTimer);
   log("worker_shutdown_started", { signal });
   await new Promise<void>((resolve) => readinessServer.close(() => resolve()));
   await worker.close();

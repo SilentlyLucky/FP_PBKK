@@ -10,6 +10,7 @@ export * from "./graphify-export.ts";
 export * from "./graphify-import.ts";
 export * from "./graph-retrieval.ts";
 export * from "./workspace-source-manifest.ts";
+export * from "./workspace-conversations.ts";
 export type DatabaseQuery = Pick<
   Database,
   "select" | "insert" | "update" | "delete"

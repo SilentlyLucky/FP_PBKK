@@ -599,6 +599,32 @@ export const runEvents = pgTable(
   ],
 );
 
+export const workspaceConversations = pgTable(
+  "workspace_conversations",
+  {
+    id: uuid("id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 120 }).notNull(),
+    conversation: jsonb("conversation")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    createdAt: now(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique("workspace_conversations_project_id_uq").on(
+      table.projectId,
+      table.id,
+    ),
+    index("workspace_conversations_project_updated_idx").on(
+      table.projectId,
+      table.updatedAt,
+    ),
+  ],
+);
+
 export const monitoringEventCounters = pgTable(
   "monitoring_event_counters",
   {
@@ -1181,6 +1207,7 @@ export const schema = {
   runs,
   modelAttempts,
   runEvents,
+  workspaceConversations,
   usageRecords,
   outbox,
   graphBuilds,

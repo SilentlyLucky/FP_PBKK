@@ -368,7 +368,9 @@ export function mergeWorkspaceConversationLists(
   );
 }
 
-function parseConversation(value: unknown): WorkspaceConversation | null {
+export function parseWorkspaceConversation(
+  value: unknown,
+): WorkspaceConversation | null {
   if (!isRecord(value) || !Array.isArray(value.turns)) return null;
   if (
     typeof value.id !== "string" ||
@@ -424,7 +426,7 @@ export function readConversations(
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .map(parseConversation)
+      .map(parseWorkspaceConversation)
       .filter(
         (conversation): conversation is WorkspaceConversation =>
           conversation !== null,
@@ -505,7 +507,7 @@ export function getConversationsSnapshot(
     const parsed: unknown = JSON.parse(raw);
     const value = Array.isArray(parsed)
       ? parsed
-          .map(parseConversation)
+          .map(parseWorkspaceConversation)
           .filter(
             (conversation): conversation is WorkspaceConversation =>
               conversation !== null,

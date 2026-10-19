@@ -19,6 +19,7 @@ import {
 import {
   resolveDefaultProviderSmokeLedgerPath as resolvePersistedLedgerPath,
   resolveProviderVerificationCampaignLedgerPath,
+  DEFAULT_PROVIDER_VERIFICATION_CAMPAIGN_BUDGET,
 } from "../../packages/providers/src/provider-smoke-ledger.ts";
 
 const directories: string[] = [];
@@ -514,10 +515,15 @@ describe("provider smoke call ledger", () => {
       process.env.PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN = CAMPAIGN_ID;
       vi.resetModules();
       const campaignModule = await import("./ledger.mjs");
+      await campaignModule.recordInferenceOutcome("campus_gateway", {
+        outcome: "blocked_no_active_projects",
+      });
       const firstSnapshot = await campaignModule.getSmokeLedgerSnapshot();
-      expect("campaignId" in firstSnapshot && firstSnapshot.campaignId).toBe(
-        CAMPAIGN_ID,
-      );
+      expect(firstSnapshot).toMatchObject({
+        campaignId: CAMPAIGN_ID,
+        maxInferenceCallsByProvider:
+          DEFAULT_PROVIDER_VERIFICATION_CAMPAIGN_BUDGET,
+      });
       expect(await campaignModule.reserveInferenceCall("campus_gateway")).toBe(
         1,
       );

@@ -704,7 +704,11 @@ function HistoryDetail({
         ) : null}
         <RunVoteHistory projectId={projectId} runId={experiment.runId} />
         <div className={styles.detailActions}>
-          <Link className={styles.primaryLink} href="/experiments">
+          <Link
+            className={styles.primaryLink}
+            href="/experiments"
+            prefetch={false}
+          >
             Buka pengujian
           </Link>
           <Link

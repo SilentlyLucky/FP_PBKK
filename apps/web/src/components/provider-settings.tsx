@@ -36,6 +36,8 @@ const labels: Record<string, string> = {
 
 const CODEX_LOGIN_POLL_INTERVAL_MS = 2_000;
 const CODEX_LOGIN_MAX_POLL_FAILURES = 3;
+const PROVIDER_STATUS_TIMEOUT_MS = 10_000;
+const CAMPUS_VERIFICATION_TIMEOUT_MS = 40_000;
 
 type CampaignProvider = "campus_gateway" | "codex_app_server";
 interface CapabilityCampaignResult {
@@ -151,7 +153,10 @@ export function ProviderSettings() {
   }, []);
 
   const loadProviders = useCallback(async () => {
-    const response = await fetch("/api/providers", { cache: "no-store" });
+    const response = await fetch("/api/providers", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(PROVIDER_STATUS_TIMEOUT_MS),
+    });
     const result = (await response.json()) as ProviderApiResult;
     if (!response.ok) throw new Error("Status provider tidak tersedia.");
     applyProviderResult(result);
@@ -181,19 +186,14 @@ export function ProviderSettings() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/providers", { cache: "no-store" })
-      .then(async (response) => {
-        const result = (await response.json()) as ProviderApiResult;
-        if (!response.ok) throw new Error("Status provider tidak tersedia.");
-        if (active) applyProviderResult(result);
-      })
+    loadProviders()
       .catch(() => {
         if (active) setError("Status provider tidak tersedia.");
       });
     return () => {
       active = false;
     };
-  }, [applyProviderResult]);
+  }, [loadProviders]);
 
   const pendingLoginId =
     codexLogin?.status === "pending" ? codexLogin.loginId : null;
@@ -429,13 +429,16 @@ export function ProviderSettings() {
       delete next.campus_gateway;
       return next;
     });
-    setVerificationMessage(null);
+    setVerificationMessage(
+      "Mengirim satu request kecil ke Gateway Kampus…",
+    );
     setVerificationFailed(false);
     try {
       const response = await fetch("/api/providers", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
+        signal: AbortSignal.timeout(CAMPUS_VERIFICATION_TIMEOUT_MS),
       });
       const result = (await response.json()) as ProviderApiResult;
       if (result.providers) setProviders(result.providers);
@@ -449,16 +452,14 @@ export function ProviderSettings() {
             : "Verifikasi tidak berhasil. Detail sensitif tidak ditampilkan."),
       );
       if (!result.providers) await loadProviders();
-    } catch {
+    } catch (cause) {
       setVerificationFailed(true);
       setVerificationMessage(
-        "Verifikasi tidak dapat dihubungi. Detail server tidak ditampilkan.",
+        cause instanceof DOMException && cause.name === "TimeoutError"
+          ? "Verifikasi melewati batas waktu. Status mungkin sudah tersimpan; periksa status sebelum mencoba lagi."
+          : "Verifikasi tidak dapat dihubungi. Detail server tidak ditampilkan.",
       );
-      try {
-        await loadProviders();
-      } catch {
-        // Keep the last status visible when refreshing also fails.
-      }
+      void loadProviders().catch(() => undefined);
     } finally {
       setVerifying(false);
       notifyProviderStatusRefresh();

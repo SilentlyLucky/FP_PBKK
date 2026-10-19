@@ -312,6 +312,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
                   key={href}
                   className="nav-link"
                   href={href}
+                  prefetch={href === "/experiments" ? false : null}
                   aria-label={label}
                   title={label}
                   aria-current={active ? "page" : undefined}

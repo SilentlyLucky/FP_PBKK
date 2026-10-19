@@ -199,6 +199,7 @@ export function WorkspaceRunResult({
   displayAnswer = true,
   chatPresentation = false,
   userPrompt = "",
+  initialAnswer = null,
   conversationContextPrompts = [],
   onCompleted,
   onStatusChange,
@@ -211,6 +212,7 @@ export function WorkspaceRunResult({
   displayAnswer?: boolean;
   chatPresentation?: boolean;
   userPrompt?: string;
+  initialAnswer?: string | null;
   conversationContextPrompts?: readonly string[];
   onCompleted?: (text: string) => void;
   onStatusChange?: (status: string) => void;
@@ -241,7 +243,7 @@ export function WorkspaceRunResult({
     retrievalTraceIds: [],
     graphSnapshotId: null,
   });
-  const current =
+  const runSnapshot =
     snapshot.key === runKey
       ? snapshot
       : {
@@ -264,6 +266,16 @@ export function WorkspaceRunResult({
           retrievalTraceIds: [],
           graphSnapshotId: null,
         };
+  const current =
+    initialAnswer && !runSnapshot.completed
+      ? {
+          ...runSnapshot,
+          status: "succeeded",
+          text: initialAnswer,
+          completed: true,
+          failed: false,
+        }
+      : runSnapshot;
   const label = statusLabel(current.status, current.completed, current.failed);
   const terminal =
     isTerminal(current.status) || current.completed || current.failed;

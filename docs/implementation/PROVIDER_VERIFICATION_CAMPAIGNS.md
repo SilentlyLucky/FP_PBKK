@@ -28,18 +28,22 @@ ledger is missing, the verifier refuses to recreate it. Neither condition
 falls back to the historical ledger.
 
 The historical smoke ledger remains capped at two reserved calls per provider
-for direct smoke-test tooling. User-triggered verification from Settings uses
-that budget only when a named campaign is explicitly configured. Without a
-campaign, each explicit click sends one bounded verification request and stores
-its receipt in the provider connection database; it does not consume or update
-the historical ledger. Named campaigns have separate per-provider ceilings recorded in
-`maxInferenceCallsByProvider`; the code permits ceilings up to 110 calls per
-provider. A reservation is written under the ledger lock before a provider
-request starts, so failed requests and requests with unknown outcomes still
-consume one application verification reservation. These ceilings are
-PromptLab's per-campaign verification budgets; they are not provider quotas,
-rate limits, or billing limits. Normal worker generations do not use this
-verifier ledger.
+for direct smoke-test tooling. Without a named campaign, a manual Settings
+check sends one bounded request and stores its receipt in the provider
+connection database; it does not consume or update the historical ledger. The
+full capability campaign is separate: Codex requires three turns and Campus
+requires four requests, and it is blocked unless a valid campaign ID is
+configured. A new persisted campaign ledger starts with a code-owned ceiling of
+110 calls per provider. Existing ledgers retain their recorded ceiling and
+counters. The generic `createProviderSmokeLedger` helper still defaults to two
+calls unless a provider-specific campaign budget is supplied.
+
+A reservation is written under the ledger lock before a provider request
+starts, so failed requests and requests with unknown outcomes still consume one
+application verification reservation. While a named campaign is configured,
+worker inference paths that reserve provider calls use the same per-provider
+ledger. These ceilings are PromptLab's per-campaign application budgets; they
+are not provider quotas, rate limits, or billing limits.
 
 The Flow 2 campaign `v3-live-validation-20261017-a-01` has ceilings of 73
 Campus calls and 110 Codex calls. Its ledger counters are cumulative; a new
@@ -47,22 +51,20 @@ run must use the remaining budget in that same ledger rather than resetting it
 or creating another campaign ID.
 
 The active Flow 1 follow-up campaign
-`flow1-live-20261018-000000000001` has ceilings of 8 Campus calls and 9 Codex
-calls. After its first incomplete run, the existing counters are Campus 5/8
-and Codex 3/9. The Flow 1 rerun must continue with this same ledger; do not
-reset its counters or initialized marker.
+`flow1-live-20261018-000000000001` has ceilings of 110 calls per provider. Its
+current source-ledger counters are Campus 11/110 and Codex 12/110. Continue
+with this same campaign ID and ledger; do not reset its counters or
+initialization marker.
 
-Use one ID for the entire bounded verification journey. An uninitialized
-campaign defaults to two calls per provider. For a larger bounded run, initialize
-it explicitly with `createProviderSmokeLedger(path, campaignId, { campus_gateway,
-codex_app_server })`. The maximum is 110 calls per provider. Choosing a new ID
+Use one ID for the entire bounded verification journey. Choosing a new ID
 creates a separate application budget, so selecting it has real budget impact.
 Do not change the ID to work around an exhausted campaign.
 
-When the variable is absent, Settings verification does not use a campaign
-ledger. Direct smoke-test tooling that calls the ledger API without a campaign
-continues to use `docs/PROVIDER_SMOKE_LEDGER.json` and the historical session
+When the variable is absent, one-request Settings checks do not use a campaign
+ledger, while the full capability campaign is blocked. Direct smoke-test
+tooling that calls the ledger API without a campaign continues to use
+`docs/PROVIDER_SMOKE_LEDGER.json` and the historical session
 `foundation-provider-spike-2026-10-11`. That ledger and its existing counters
 remain intact. The historical record is Campus `2/2` and Codex `2/2`; these
-counts no longer block manual Settings verification. Docker Compose passes the
-optional campaign ID to both web and worker services when one is configured.
+counts do not block manual Settings checks. Docker Compose passes the optional
+campaign ID to both web and worker services when one is configured.

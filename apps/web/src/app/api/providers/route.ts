@@ -2306,17 +2306,20 @@ export async function POST(request: Request) {
   const provider = new CampusChatProvider({ apiKey: environment.apiKey });
   let completion;
   try {
-    completion = await provider.complete({
-      model: environment.requestedModel,
-      purpose: "optimizer",
-      maxOutputTokens: 16,
-      messages: [
-        {
-          role: "user",
-          content: "Reply exactly: PromptLab provider smoke OK.",
-        },
-      ],
-    });
+    completion = await provider.complete(
+      {
+        model: environment.requestedModel,
+        purpose: "optimizer",
+        maxOutputTokens: 16,
+        messages: [
+          {
+            role: "user",
+            content: "Reply exactly: PromptLab provider smoke OK.",
+          },
+        ],
+      },
+      { signal: request.signal },
+    );
   } catch (error) {
     const code = failureCode(error);
     const checkedAt = new Date();
