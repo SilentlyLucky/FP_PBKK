@@ -190,16 +190,19 @@ describe("provider smoke call ledger", () => {
     ).toThrow("Canonical provider call ledger is missing");
   });
 
-  it("enforces the code-owned cap of two reservations", async () => {
+  it("enforces the code-owned cap of five reservations", async () => {
     const path = await makeLedger();
     const ledger = createProviderSmokeLedger(path);
 
-    await expect(ledger.reserveInferenceCall("campus_gateway")).resolves.toBe(
-      1,
-    );
-    await expect(ledger.reserveInferenceCall("campus_gateway")).resolves.toBe(
-      2,
-    );
+    for (
+      let expectedCall = 1;
+      expectedCall <= MAX_INFERENCE_CALLS_PER_PROVIDER;
+      expectedCall += 1
+    ) {
+      await expect(ledger.reserveInferenceCall("campus_gateway")).resolves.toBe(
+        expectedCall,
+      );
+    }
     await expect(ledger.reserveInferenceCall("campus_gateway")).rejects.toThrow(
       "Inference call cap reached",
     );
@@ -209,7 +212,7 @@ describe("provider smoke call ledger", () => {
     expect(
       JSON.parse(await readFile(path, "utf8")).providers.campus_gateway,
     ).toMatchObject({
-      reservedCalls: 2,
+      reservedCalls: MAX_INFERENCE_CALLS_PER_PROVIDER,
       lastOutcome: "blocked_budget_exhausted",
     });
   });
@@ -261,7 +264,8 @@ describe("provider smoke call ledger", () => {
     await expect(ledger.reserveInferenceCall("campus_gateway")).rejects.toThrow(
       "values are invalid for campus_gateway",
     );
-    validLedger.providers.campus_gateway.reservedCalls = 3;
+    validLedger.providers.campus_gateway.reservedCalls =
+      MAX_INFERENCE_CALLS_PER_PROVIDER + 1;
     await writeFile(path, JSON.stringify(validLedger));
     await expect(ledger.reserveInferenceCall("campus_gateway")).rejects.toThrow(
       "values are invalid for campus_gateway",
@@ -276,9 +280,11 @@ describe("provider smoke call ledger", () => {
       path,
       JSON.stringify({
         session: "foundation-provider-spike-2026-10-11",
-        maxInferenceCallsPerProvider: 2,
+        maxInferenceCallsPerProvider: MAX_INFERENCE_CALLS_PER_PROVIDER,
         providers: {
-          campus_gateway: { reservedCalls: 3 },
+          campus_gateway: {
+            reservedCalls: MAX_INFERENCE_CALLS_PER_PROVIDER + 1,
+          },
           codex_app_server: {},
         },
       }),
@@ -288,7 +294,7 @@ describe("provider smoke call ledger", () => {
     );
   });
 
-  it("reserves no more than two calls under concurrent requests", async () => {
+  it("reserves no more than five calls under concurrent requests", async () => {
     const path = await makeLedger();
     const ledger = createProviderSmokeLedger(path);
 
@@ -305,7 +311,7 @@ describe("provider smoke call ledger", () => {
     ).toHaveLength(8 - MAX_INFERENCE_CALLS_PER_PROVIDER);
     expect(
       JSON.parse(await readFile(path, "utf8")).providers.codex_app_server,
-    ).toMatchObject({ reservedCalls: 2 });
+    ).toMatchObject({ reservedCalls: MAX_INFERENCE_CALLS_PER_PROVIDER });
   });
 
   it("persists the named campaign cap across recreated ledger instances", async () => {
@@ -321,9 +327,15 @@ describe("provider smoke call ledger", () => {
     );
 
     const restartedRun = createProviderSmokeLedger(path, CAMPAIGN_ID);
-    await expect(
-      restartedRun.reserveInferenceCall("campus_gateway"),
-    ).resolves.toBe(2);
+    for (
+      let expectedCall = 2;
+      expectedCall <= MAX_INFERENCE_CALLS_PER_PROVIDER;
+      expectedCall += 1
+    ) {
+      await expect(
+        restartedRun.reserveInferenceCall("campus_gateway"),
+      ).resolves.toBe(expectedCall);
+    }
     await expect(
       createProviderSmokeLedger(path, CAMPAIGN_ID).reserveInferenceCall(
         "campus_gateway",
@@ -336,7 +348,11 @@ describe("provider smoke call ledger", () => {
     };
     expect(persisted).toMatchObject({
       campaignId: CAMPAIGN_ID,
-      providers: { campus_gateway: { reservedCalls: 2 } },
+      providers: {
+        campus_gateway: {
+          reservedCalls: MAX_INFERENCE_CALLS_PER_PROVIDER,
+        },
+      },
     });
   });
 
@@ -466,7 +482,7 @@ describe("provider smoke call ledger", () => {
     ).toHaveLength(8 - MAX_INFERENCE_CALLS_PER_PROVIDER);
     expect(
       JSON.parse(await readFile(path, "utf8")).providers.codex_app_server,
-    ).toMatchObject({ reservedCalls: 2 });
+    ).toMatchObject({ reservedCalls: MAX_INFERENCE_CALLS_PER_PROVIDER });
   });
 
   it("keeps the historical ledger untouched and configures the backend singleton at import", async () => {

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   AgentBudgetSchema,
   type AgentBudgetInput,
@@ -116,6 +118,14 @@ export interface AgentTraceEvent {
     | "agent.finished";
   turn: number;
   selectedTools?: AgentToolCall["name"][];
+  decisionOutcome?:
+    | "tool_calls_selected"
+    | "candidate_proposed"
+    | "no_change_recommended"
+    | "clarification_required"
+    | "final_answer"
+    | "finished"
+    | "continue";
   toolName?: AgentToolCall["name"];
   argumentsSummary?: Record<string, unknown>;
   resultSummary?: Record<string, unknown>;
@@ -129,6 +139,11 @@ export interface AgentPlannerContext {
   readonly turn: number;
   readonly budget: AgentBudget;
   readonly priorToolResults: readonly unknown[];
+  readonly priorToolNames: readonly AgentToolCall["name"][];
+  readonly priorToolSummaries: readonly {
+    toolName: AgentToolCall["name"];
+    resultSummary: Record<string, unknown>;
+  }[];
   readonly priorCandidate: AgentCandidate | null;
   readonly signal: AbortSignal;
 }
@@ -167,6 +182,11 @@ export async function runBoundedAgent(
   if (options.signal?.aborted) controller.abort(options.signal.reason);
 
   const toolResults: unknown[] = [];
+  const toolNames: AgentToolCall["name"][] = [];
+  const toolSummaries: Array<{
+    toolName: AgentToolCall["name"];
+    resultSummary: Record<string, unknown>;
+  }> = [];
   let candidate: AgentCandidate | null = null;
   const executeToolCall = async (
     toolCall: AgentToolCall,
@@ -202,12 +222,15 @@ export async function runBoundedAgent(
       }
       throw error;
     }
+    const resultSummary = summarizeToolResult(toolCall.name, output);
     toolResults.push(output);
+    toolNames.push(toolCall.name);
+    toolSummaries.push({ toolName: toolCall.name, resultSummary });
     await options.onEvent?.({
       type: "tool.completed",
       turn,
       toolName: toolCall.name,
-      resultSummary: summarizeToolResult(toolCall.name, output),
+      resultSummary,
       summary: `Selesai ${toolCall.name}`,
     });
   };
@@ -235,6 +258,8 @@ export async function runBoundedAgent(
             turn,
             budget,
             priorToolResults: toolResults,
+            priorToolNames: toolNames,
+            priorToolSummaries: toolSummaries,
             priorCandidate: candidate,
             signal: AbortSignal.any([controller.signal, timeout]),
           }),
@@ -274,6 +299,19 @@ export async function runBoundedAgent(
         type: "agent.action",
         turn,
         clarificationRequired: decision.clarificationRequired,
+        decisionOutcome: decision.clarificationRequired
+          ? "clarification_required"
+          : decision.noChangeRecommended
+            ? "no_change_recommended"
+            : decision.candidate
+              ? "candidate_proposed"
+              : decision.toolCalls.length > 0
+                ? "tool_calls_selected"
+                : decision.finalText !== null
+                  ? "final_answer"
+                  : decision.finish
+                    ? "finished"
+                    : "continue",
         selectedTools: decision.toolCalls.map((toolCall) => toolCall.name),
         ...(decision.clarification
           ? { clarification: decision.clarification }
@@ -772,12 +810,14 @@ function summarizeToolArguments(call: AgentToolCall): Record<string, unknown> {
     case "search_knowledge":
       return {
         queryCharacters: call.arguments.query.length,
+        queryFingerprint: fingerprint(call.arguments.query),
         sourceCount: call.arguments.sourceIds?.length ?? null,
         limit: call.arguments.limit,
       };
     case "search_verified_memory":
       return {
         queryCharacters: call.arguments.query.length,
+        queryFingerprint: fingerprint(call.arguments.query),
         limit: call.arguments.limit,
       };
     case "get_source":
@@ -792,6 +832,7 @@ function summarizeToolArguments(call: AgentToolCall): Record<string, unknown> {
     case "search_graph_entities":
       return {
         queryCharacters: call.arguments.query.length,
+        queryFingerprint: fingerprint(call.arguments.query),
         limit: call.arguments.limit,
       };
     case "traverse_graph":
@@ -805,8 +846,15 @@ function summarizeToolArguments(call: AgentToolCall): Record<string, unknown> {
     case "get_graph_status":
       return {};
     case "call_codex_target":
-      return { promptCharacters: call.arguments.prompt.length };
+      return {
+        promptCharacters: call.arguments.prompt.length,
+        promptFingerprint: fingerprint(call.arguments.prompt),
+      };
   }
+}
+
+function fingerprint(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function summarizeToolResult(
@@ -853,7 +901,7 @@ function summarizeToolResult(
       "entityCount",
       "assertionCount",
     ],
-    call_codex_target: ["available", "status", "responseModel", "usage"],
+    call_codex_target: ["available", "status", "responseModel"],
   };
   const summary: Record<string, unknown> = {};
   for (const key of keysByTool[name]) {
@@ -866,6 +914,9 @@ function summarizeToolResult(
     ) {
       summary[key] = item;
     }
+  }
+  if (name === "call_codex_target" && typeof result.text === "string") {
+    summary.responseCharacters = result.text.length;
   }
   return summary;
 }

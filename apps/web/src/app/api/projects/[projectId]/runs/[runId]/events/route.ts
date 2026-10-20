@@ -129,8 +129,11 @@ export async function GET(
   let latestCompletion = (
     await database.db
       .select({
+        id: schema.runEvents.id,
+        sequence: schema.runEvents.sequence,
         attemptId: schema.runEvents.attemptId,
         payload: schema.runEvents.payload,
+        createdAt: schema.runEvents.createdAt,
       })
       .from(schema.runEvents)
       .where(
@@ -154,6 +157,38 @@ export async function GET(
       : Number.isSafeInteger(queryCursor) && queryCursor > 0
         ? queryCursor
         : 0;
+
+  if (
+    new URL(request.url).searchParams.get("snapshot") === "completed" &&
+    latestCompletion
+  ) {
+    const payload = projectCompletionEvidence({
+      runId,
+      runStatus: run.status,
+      runConfigSnapshot: run.configSnapshot,
+      attemptId: latestCompletion.attemptId,
+      value: latestCompletion.payload,
+    });
+    const data = JSON.stringify({
+      id: latestCompletion.id,
+      sequence: latestCompletion.sequence,
+      timestamp: latestCompletion.createdAt.toISOString(),
+      eventType: "run.completed",
+      payload,
+    });
+    return new Response(
+      `id: ${latestCompletion.sequence}\nevent: run.completed\ndata: ${data}\n\n`,
+      {
+        headers: {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache, no-transform",
+          connection: "keep-alive",
+          "x-accel-buffering": "no",
+        },
+      },
+    );
+  }
+
   const encoder = new TextEncoder();
   let closed = false;
 
@@ -210,8 +245,11 @@ export async function GET(
             cursor = event.sequence;
             if (event.eventType === "run.completed") {
               latestCompletion = {
+                id: event.id,
+                sequence: event.sequence,
                 attemptId: event.attemptId,
                 payload: event.payload,
+                createdAt: event.createdAt,
               };
             }
             const payload = event.eventType === "run.completed"

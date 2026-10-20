@@ -634,6 +634,86 @@ describe("run activity presentation", () => {
     });
   });
 
+  it("explains a Senopati request that stopped before response headers", () => {
+    const payload = {
+      status: "interrupted_unknown",
+      remoteOutcomeUnknown: true,
+      errorCode: "PROVIDER_TIMEOUT",
+      providerDiagnostics: {
+        phase: "request_headers",
+        elapsedMs: 61_080,
+        transportCode: "ECONNRESET",
+        request: "private raw request",
+        credential: "private test credential",
+      },
+    };
+
+    const projected = projectRunActivityPayload("run.failed", payload);
+    const activity = describeRunActivity({
+      eventType: "run.failed",
+      payload,
+    });
+
+    expect(projected.providerDiagnostics).toEqual({
+      phase: "request_headers",
+      elapsedMs: 61_080,
+      transportCode: "ECONNRESET",
+    });
+    expect(activity).toMatchObject({
+      title: "Run terhenti; hasil provider belum diketahui",
+      summary:
+        "Koneksi berakhir sebelum hasil remote dapat dipastikan. Request ke gateway Senopati terputus sebelum header respons HTTP diterima setelah 61.1 detik (ECONNRESET). Gateway mungkin sudah menerima request; periksa status Run sebelum mengirim ulang.",
+      details: expect.arrayContaining([
+        { label: "Durasi request", value: "61,1 detik" },
+        { label: "Tahap request", value: "Menunggu header respons" },
+        { label: "Transport", value: "ECONNRESET" },
+      ]),
+    });
+    expect(JSON.stringify([projected, activity])).not.toMatch(
+      /private raw request|private test credential/,
+    );
+  });
+
+  it("explains an HTTP response and keeps only safe provider diagnostics", () => {
+    const payload = {
+      status: "interrupted_unknown",
+      remoteOutcomeUnknown: true,
+      errorCode: "PROVIDER_HTTP_ERROR",
+      providerDiagnostics: {
+        phase: "response_headers",
+        elapsedMs: 56_102,
+        responseStatus: 504,
+        responseBody: "private response body",
+        apiKey: "private test credential",
+      },
+    };
+
+    const projected = projectRunActivityPayload("run.failed", payload);
+    const activity = describeRunActivity({
+      eventType: "run.failed",
+      payload,
+    });
+
+    expect(projected.providerDiagnostics).toEqual({
+      phase: "response_headers",
+      elapsedMs: 56_102,
+      responseStatus: 504,
+    });
+    expect(activity).toMatchObject({
+      title: "Run terhenti; hasil provider belum diketahui",
+      summary:
+        "Koneksi berakhir sebelum hasil remote dapat dipastikan. Gateway Senopati mengembalikan HTTP 504 setelah 56.1 detik. Hasil pemrosesan request belum diketahui; periksa status Run sebelum mengirim ulang.",
+      details: expect.arrayContaining([
+        { label: "Respons gateway", value: "HTTP 504" },
+        { label: "Durasi request", value: "56,1 detik" },
+        { label: "Tahap request", value: "Respons HTTP diterima" },
+      ]),
+    });
+    expect(JSON.stringify([projected, activity])).not.toMatch(
+      /private response body|private test credential/,
+    );
+  });
+
   it("keeps unknown and incomplete legacy fields generic and private", () => {
     const activity = describeRunActivity({
       sequence: 9,

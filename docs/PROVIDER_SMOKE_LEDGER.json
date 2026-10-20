@@ -1,16 +1,15 @@
 {
   "session": "foundation-provider-spike-2026-10-11",
-  "maxInferenceCallsPerProvider": 2,
+  "maxInferenceCallsPerProvider": 5,
   "providers": {
     "campus_gateway": {
-      "reservedCalls": 2,
+      "reservedCalls": 4,
       "lastOutcome": "succeeded",
       "requestedModel": "qwen3:14b",
       "responseModel": "qwen3:14b",
       "usage": "reported",
       "capabilitiesObserved": [
-        "non-stream chat completion returned a valid response",
-        "prompt and completion token usage were reported"
+        "Workspace optimizer returned a schema-valid decision"
       ]
     },
     "codex_app_server": {

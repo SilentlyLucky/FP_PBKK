@@ -224,7 +224,6 @@ function parseRunCreateRequest(
       value.retrieval.strategy !== "graph" &&
       value.retrieval.strategy !== "full_context") ||
     !Array.isArray(sourceIds) ||
-    sourceIds.length > 20 ||
     sourceIds.some((sourceId) => typeof sourceId !== "string") ||
     !validWorkspaceChat ||
     (value.reasoningEffort !== undefined &&

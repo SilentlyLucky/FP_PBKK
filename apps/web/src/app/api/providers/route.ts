@@ -2,6 +2,7 @@ import { aggregateUsageProvenance } from "@promptlab/providers/usage-provenance"
 import {
   CampusChatProvider,
   ProviderRequestError,
+  campusOptimizerTimeoutMsFromEnvironment,
 } from "@promptlab/providers/campus";
 import {
   campusCapabilityCampaignMatchesConfiguration,
@@ -60,6 +61,8 @@ export const dynamic = "force-dynamic";
 
 const CAMPUS_ENDPOINT_LABEL =
   "Gateway kampus · OpenAI-compatible chat completions";
+const CAMPUS_CAPABILITY_PROBE_TIMEOUT_MS = 15_000;
+const CAMPUS_CONNECTION_VERIFICATION_TIMEOUT_MS = 15_000;
 const CAMPUS_ROLES = ["optimizer", "auxiliary"] as const;
 type CampusRole = (typeof CAMPUS_ROLES)[number];
 
@@ -253,7 +256,8 @@ function campusState(
       (verified
         ? (campusCapabilitiesFromSnapshot(
             firstCurrentRow?.capabilitySnapshot,
-          ) ?? unknownCampusCapabilities("Bukti capability tidak dapat dibaca."))
+          ) ??
+          unknownCampusCapabilities("Bukti capability tidak dapat dibaca."))
         : unknownCampusCapabilities(
             "Belum diamati oleh request provider yang berhasil untuk konfigurasi ini.",
           )),
@@ -425,11 +429,7 @@ function codexCapabilities(
     evidence(
       condition ? "supported" : "unknown",
       name,
-      condition
-        ? supportedReason
-        : verified
-          ? unknownReason
-          : unverifiedReason,
+      condition ? supportedReason : verified ? unknownReason : unverifiedReason,
     );
 
   return {
@@ -655,7 +655,7 @@ function codexState(
     checkedAt:
       verified && typeof verification?.checkedAt === "string"
         ? verification.checkedAt
-        : campaignRow?.checkedAt?.toISOString() ?? null,
+        : (campaignRow?.checkedAt?.toISOString() ?? null),
     reason,
     capabilities,
   };
@@ -798,7 +798,9 @@ async function saveCapabilityCampaign(
           ...verificationSnapshot,
           capabilityCampaign: campaign,
         };
-        const newCampusVerification = isRecord(verificationSnapshot.verification)
+        const newCampusVerification = isRecord(
+          verificationSnapshot.verification,
+        )
           ? verificationSnapshot.verification
           : null;
         const newCodexVerification = isRecord(
@@ -825,7 +827,9 @@ async function saveCapabilityCampaign(
           provider,
           role,
           authKind:
-            provider === "campus_gateway" ? "environment_bearer" : "official_cli",
+            provider === "campus_gateway"
+              ? "environment_bearer"
+              : "official_cli",
           secretRef: null,
           endpointLabel:
             provider === "campus_gateway"
@@ -833,9 +837,10 @@ async function saveCapabilityCampaign(
               : "Codex CLI · app-server stdio",
           requestedModel,
           responseModel,
-          connectionStatus: newlyVerified || keepVerifiedReceipt
-            ? "verified"
-            : "configured_unverified",
+          connectionStatus:
+            newlyVerified || keepVerifiedReceipt
+              ? "verified"
+              : "configured_unverified",
           capabilitySnapshot: snapshot,
           checkedAt: new Date(campaign.checkedAt),
         };
@@ -884,6 +889,7 @@ function failureCode(
 ):
   | "AUTH_REQUIRED"
   | "PROVIDER_HTTP_ERROR"
+  | "PROVIDER_TRANSPORT_ERROR"
   | "PROVIDER_RESPONSE_INVALID"
   | "PROVIDER_TIMEOUT"
   | "PROVIDER_ABORTED"
@@ -922,9 +928,7 @@ function structuredProbeOutputIsValid(text: string): boolean {
 }
 
 function campusStreamAsCompletion(
-  result: Awaited<
-    ReturnType<CampusChatProvider["streamCapabilityProbe"]>
-  >,
+  result: Awaited<ReturnType<CampusChatProvider["streamCapabilityProbe"]>>,
   requestedModel: string,
   checkedAt: string,
 ): ProviderCompletion {
@@ -936,7 +940,8 @@ function campusStreamAsCompletion(
       ? {
           status: "unknown",
           value: null,
-          reason: "Gateway tidak melaporkan bidang token ini pada probe kampanye.",
+          reason:
+            "Gateway tidak melaporkan bidang token ini pada probe kampanye.",
         }
       : { status: "reported", value, observedAt: checkedAt, method };
   const metrics = [
@@ -983,9 +988,48 @@ function campusStreamAsCompletion(
 }
 
 function campaignProbeErrorCode(error: unknown): string {
-  if (error instanceof ProviderRequestError) return error.code;
+  if (error instanceof ProviderRequestError) {
+    const httpStatus =
+      error.code === "PROVIDER_HTTP_ERROR"
+        ? /^Campus gateway returned HTTP (\d{3})$/.exec(error.message)?.[1]
+        : undefined;
+    const code = httpStatus ? `${error.code} (HTTP ${httpStatus})` : error.code;
+    const diagnostics = error.diagnostics;
+    if (!diagnostics) return code;
+    if (diagnostics.phase === "request_headers") {
+      return diagnostics.transportCode
+        ? `${code} (${diagnostics.transportCode}; menunggu header ${diagnostics.elapsedMs} ms)`
+        : `${code} (menunggu header ${diagnostics.elapsedMs} ms)`;
+    }
+    const headerTiming =
+      diagnostics.responseHeadersMs === undefined
+        ? "header tidak tercatat"
+        : `header ${diagnostics.responseHeadersMs} ms`;
+    const firstChunkTiming =
+      diagnostics.firstChunkMs === null ||
+      diagnostics.firstChunkMs === undefined
+        ? "belum ada chunk data"
+        : `chunk pertama ${diagnostics.firstChunkMs} ms`;
+    const responseStatus =
+      diagnostics.responseStatus === undefined
+        ? "HTTP tidak diketahui"
+        : `HTTP ${diagnostics.responseStatus}`;
+    const terminalState =
+      diagnostics.finishReasonSeen === true
+        ? diagnostics.doneMarkerSeen === true
+          ? "finish_reason dan DONE terlihat"
+          : "finish_reason terlihat, DONE belum terlihat"
+        : diagnostics.doneMarkerSeen === true
+          ? "DONE terlihat"
+          : "belum ada penanda akhir pilihan atau DONE";
+    return `${code} (${responseStatus}; ${headerTiming}; ${firstChunkTiming}; ${terminalState})`;
+  }
   if (error instanceof CodexProviderError) return error.code;
   return "PROBE_ERROR";
+}
+
+function elapsedProbeMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 function campaignResponseStatus(status: CapabilityCampaign["status"]): number {
@@ -1000,7 +1044,10 @@ async function runCampusCapabilityCampaign(
     Object.keys(body).length !== 1
   ) {
     return noStoreJson(
-      { outcome: "invalid_request", message: "Kampanye Gateway Kampus tidak valid." },
+      {
+        outcome: "invalid_request",
+        message: "Kampanye Gateway Kampus tidak valid.",
+      },
       { status: 400 },
     );
   }
@@ -1032,7 +1079,9 @@ async function runCampusCapabilityCampaign(
     const campaignReceipt = environment.apiKey
       ? {
           ...campaign,
-          credentialFingerprint: campusCredentialFingerprint(environment.apiKey),
+          credentialFingerprint: campusCredentialFingerprint(
+            environment.apiKey,
+          ),
         }
       : null;
     if (db && projects.length && campaignReceipt) {
@@ -1081,6 +1130,19 @@ async function runCampusCapabilityCampaign(
       409,
     );
 
+  let timeoutMs: number;
+  try {
+    timeoutMs = Math.min(
+      campusOptimizerTimeoutMsFromEnvironment(),
+      CAMPUS_CAPABILITY_PROBE_TIMEOUT_MS,
+    );
+  } catch {
+    return blocked(
+      "Nilai PROMPTLAB_CAMPUS_OPTIMIZER_TIMEOUT_MS tidak valid. Tidak ada probe yang dikirim.",
+      409,
+    );
+  }
+
   try {
     await reserveInferenceCalls(
       "campus_gateway",
@@ -1097,7 +1159,11 @@ async function runCampusCapabilityCampaign(
     return blocked(reason, isBudgetExhausted ? 409 : 503);
   }
 
-  const provider = new CampusChatProvider({ apiKey: environment.apiKey });
+  const provider = new CampusChatProvider({
+    apiKey: environment.apiKey,
+    timeoutMs,
+    disableThinking: true,
+  });
   const probeRequest = {
     model: environment.requestedModel,
     purpose: "optimizer" as const,
@@ -1113,78 +1179,113 @@ async function runCampusCapabilityCampaign(
   type StreamResult = Awaited<
     ReturnType<CampusChatProvider["streamCapabilityProbe"]>
   >;
-  const streamResults: Array<{ value: StreamResult | null; error: string | null }> =
-    [];
+  const streamResults: Array<{
+    value: StreamResult | null;
+    error: string | null;
+    durationMs: number;
+  }> = [];
   let attemptedInferenceCalls = 0;
   let failedProbes = 0;
-  for (let index = 0; index < 2; index += 1) {
+  const runStreamProbe = async () => {
     attemptedInferenceCalls += 1;
+    const startedAt = performance.now();
     try {
       streamResults.push({
         value: await provider.streamCapabilityProbe(probeRequest),
         error: null,
+        durationMs: elapsedProbeMs(startedAt),
       });
     } catch (error) {
       failedProbes += 1;
       streamResults.push({
         value: null,
         error: campaignProbeErrorCode(error),
+        durationMs: elapsedProbeMs(startedAt),
       });
     }
+  };
+  await runStreamProbe();
+  const firstStream = streamResults[0]?.value ?? null;
+  const firstStreamHasValidSchema =
+    firstStream !== null && structuredProbeOutputIsValid(firstStream.text);
+  if (firstStreamHasValidSchema) {
+    await runStreamProbe();
   }
+  const streamProbeFailure = streamResults.find((probe) => probe.error)?.error;
+  const streamProbeSummary = streamResults
+    .map(
+      (probe, index) =>
+        `#${index + 1} ${probe.durationMs} ms${probe.error ? ` (${probe.error})` : " (selesai)"}`,
+    )
+    .join("; ");
 
   let toolCallObserved: boolean | null = null;
   let toolCallError: string | null = null;
-  attemptedInferenceCalls += 1;
-  try {
-    toolCallObserved = await provider.probeToolCall({
-      model: environment.requestedModel,
-      purpose: "optimizer",
-      maxOutputTokens: 64,
-      messages: [
-        {
-          role: "user",
-          content: "Call the provided function with its required confirmation marker.",
-        },
-      ],
-    });
-  } catch (error) {
-    failedProbes += 1;
-    toolCallError = campaignProbeErrorCode(error);
-  }
-
-  let cancellationError: string | null = null;
-  let cancellationObserved = false;
-  attemptedInferenceCalls += 1;
-  const cancellation = new AbortController();
-  let cancelTimer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const pending = provider.complete(
-      {
+  let toolCallDurationMs = 0;
+  if (!streamProbeFailure) {
+    attemptedInferenceCalls += 1;
+    const toolCallStartedAt = performance.now();
+    try {
+      toolCallObserved = await provider.probeToolCall({
         model: environment.requestedModel,
         purpose: "optimizer",
-        maxOutputTokens: 256,
+        maxOutputTokens: 64,
         messages: [
           {
             role: "user",
             content:
-              "Produce a long explanation of why this disposable request may be canceled.",
+              "Call the provided function with its required confirmation marker.",
           },
         ],
-      },
-      { signal: cancellation.signal },
-    );
-    cancelTimer = setTimeout(() => cancellation.abort(), 100);
-    await pending;
-  } catch (error) {
-    if (error instanceof ProviderRequestError && error.code === "PROVIDER_ABORTED") {
-      cancellationObserved = true;
-    } else {
-      cancellationError = campaignProbeErrorCode(error);
+      });
+    } catch (error) {
       failedProbes += 1;
+      toolCallError = campaignProbeErrorCode(error);
+    } finally {
+      toolCallDurationMs = elapsedProbeMs(toolCallStartedAt);
     }
-  } finally {
-    if (cancelTimer) clearTimeout(cancelTimer);
+  }
+
+  let cancellationError: string | null = null;
+  let cancellationObserved = false;
+  let cancellationDurationMs = 0;
+  if (!streamProbeFailure) {
+    attemptedInferenceCalls += 1;
+    const cancellation = new AbortController();
+    let cancelTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancellationStartedAt = performance.now();
+    try {
+      const pending = provider.complete(
+        {
+          model: environment.requestedModel,
+          purpose: "optimizer",
+          maxOutputTokens: 256,
+          messages: [
+            {
+              role: "user",
+              content:
+                "Produce a long explanation of why this disposable request may be canceled.",
+            },
+          ],
+        },
+        { signal: cancellation.signal },
+      );
+      cancelTimer = setTimeout(() => cancellation.abort(), 100);
+      await pending;
+    } catch (error) {
+      if (
+        error instanceof ProviderRequestError &&
+        error.code === "PROVIDER_ABORTED"
+      ) {
+        cancellationObserved = true;
+      } else {
+        cancellationError = campaignProbeErrorCode(error);
+        failedProbes += 1;
+      }
+    } finally {
+      if (cancelTimer) clearTimeout(cancelTimer);
+      cancellationDurationMs = elapsedProbeMs(cancellationStartedAt);
+    }
   }
 
   const overrides: Partial<Record<CapabilityName, CapabilityEvidence>> = {};
@@ -1229,10 +1330,15 @@ async function runCampusCapabilityCampaign(
         ? "not_observed"
         : "failed",
     hasTextDelta
-      ? "Gateway mengirim delta teks saat request stream berlangsung."
+      ? `Gateway mengirim delta teks saat request stream berlangsung. Durasi: ${streamProbeSummary}.`
       : successfulStreams.length
-        ? "Dua request streaming selesai, tetapi tidak ada delta teks non-kosong yang teramati."
-        : `Probe streaming gagal (${streamResults.map((probe) => probe.error).filter(Boolean).join(", ") || "tidak ada respons"}).`,
+        ? `${successfulStreams.length === 1 ? "Satu" : "Dua"} request streaming selesai, tetapi tidak ada delta teks non-kosong yang teramati. Durasi: ${streamProbeSummary}.`
+        : `Probe streaming gagal (${
+            streamResults
+              .map((probe) => probe.error)
+              .filter(Boolean)
+              .join(", ") || "tidak ada respons"
+          }); timeout per request ${timeoutMs} ms. Durasi: ${streamProbeSummary}.`,
   );
   set(
     "structuredOutput",
@@ -1240,12 +1346,12 @@ async function runCampusCapabilityCampaign(
       ? "supported"
       : successfulStreams.length
         ? "not_observed"
-        : "failed",
+        : "blocked",
     hasStructuredOutput
-      ? "Respons streaming cocok dengan JSON schema ketat { answer: string }."
+      ? `Respons streaming cocok dengan JSON schema ketat { answer: string }. Durasi: ${streamProbeSummary}.`
       : successfulStreams.length
-        ? "Request memakai JSON schema ketat, tetapi respons tidak cocok dengan bentuk { answer: string }."
-        : "Probe JSON schema gagal sebelum respons dapat divalidasi.",
+        ? `Request memakai JSON schema ketat, tetapi respons tidak cocok dengan bentuk { answer: string }. Durasi: ${streamProbeSummary}.`
+        : `Probe JSON schema gagal sebelum respons dapat divalidasi karena probe streaming tidak selesai. Durasi: ${streamProbeSummary}.`,
   );
   set(
     "reportedUsage",
@@ -1253,73 +1359,101 @@ async function runCampusCapabilityCampaign(
       ? "supported"
       : successfulStreams.length
         ? "not_observed"
-        : "failed",
+        : "blocked",
     reportsInputAndOutput
-      ? "Gateway melaporkan prompt_tokens dan completion_tokens pada request streaming."
+      ? `Gateway melaporkan prompt_tokens dan completion_tokens pada request streaming. Durasi: ${streamProbeSummary}.`
       : successfulStreams.length
-        ? "Response tidak memuat kedua bidang token input dan output."
-        : "Usage tidak dapat diperiksa karena probe streaming gagal.",
+        ? `Response tidak memuat kedua bidang token input dan output. Durasi: ${streamProbeSummary}.`
+        : `Usage tidak dapat diperiksa karena probe streaming tidak selesai. Durasi: ${streamProbeSummary}.`,
   );
   set(
     "cacheReadReporting",
     hasCacheRead
       ? "supported"
-      : successfulStreams.length === 2
-        ? "not_observed"
-        : "failed",
+      : !firstStreamHasValidSchema
+        ? "blocked"
+        : streamResults[1]?.error
+          ? "failed"
+          : successfulStreams.length === 2
+            ? "not_observed"
+            : "blocked",
     hasCacheRead
-      ? `Request identik kedua melaporkan cached_tokens=${secondUsage?.cacheReadTokens}.`
-      : successfulStreams.length === 2
-        ? "Request identik kedua tidak melaporkan token cache read positif; cache hit tidak teramati pada percobaan ini."
-        : "Cache read tidak dapat diuji karena kedua request identik tidak selesai dengan sukses.",
+      ? `Request identik kedua melaporkan cached_tokens=${secondUsage?.cacheReadTokens}. Durasi: ${streamProbeSummary}.`
+      : !firstStreamHasValidSchema
+        ? `Probe cache read dilewati karena probe streaming pertama tidak menghasilkan object JSON schema { answer: string } yang valid${streamProbeFailure ? ` (${streamProbeFailure})` : ""}.`
+        : streamResults[1]?.error
+          ? `Probe cache read gagal (${streamResults[1].error}) setelah ${streamResults[1].durationMs} ms. Durasi: ${streamProbeSummary}.`
+          : successfulStreams.length === 2
+            ? `Request identik kedua tidak melaporkan token cache read positif; cache hit tidak teramati pada percobaan ini. Durasi: ${streamProbeSummary}.`
+            : "Probe cache read tidak dijalankan karena prasyarat probe berulang tidak terpenuhi.",
   );
   set(
     "cacheWriteReporting",
     hasCacheWrite
       ? "supported"
-      : successfulStreams.length === 2
-        ? "not_observed"
-        : "failed",
+      : !firstStreamHasValidSchema
+        ? "blocked"
+        : streamResults[1]?.error
+          ? "failed"
+          : successfulStreams.length === 2
+            ? "not_observed"
+            : "blocked",
     hasCacheWrite
-      ? "Salah satu response request identik melaporkan cache_write_tokens positif."
-      : successfulStreams.length === 2
-        ? "Dua response request identik tidak melaporkan cache write token positif; write tidak teramati pada percobaan ini."
-        : "Cache write tidak dapat diuji karena kedua request identik tidak selesai dengan sukses.",
+      ? `Salah satu response request identik melaporkan cache_write_tokens positif. Durasi: ${streamProbeSummary}.`
+      : !firstStreamHasValidSchema
+        ? `Probe cache write dilewati karena probe streaming pertama tidak menghasilkan object JSON schema { answer: string } yang valid${streamProbeFailure ? ` (${streamProbeFailure})` : ""}.`
+        : streamResults[1]?.error
+          ? `Probe cache write gagal (${streamResults[1].error}) setelah ${streamResults[1].durationMs} ms. Durasi: ${streamProbeSummary}.`
+          : successfulStreams.length === 2
+            ? `Dua response request identik tidak melaporkan cache write token positif; write tidak teramati pada percobaan ini. Durasi: ${streamProbeSummary}.`
+            : "Probe cache write tidak dijalankan karena prasyarat probe berulang tidak terpenuhi.",
   );
   set(
     "toolCalls",
-    toolCallObserved === null
-      ? "failed"
-      : toolCallObserved
-        ? "supported"
-        : "not_observed",
-    toolCallObserved === true
-      ? "Gateway mengembalikan forced function call dengan argumen yang cocok schema. PromptLab hanya mengamati dan tidak menjalankan fungsi."
-      : toolCallObserved === false
-        ? "Request forced function call selesai, tetapi tidak ada pemanggilan fungsi valid yang teramati."
-        : `Probe function call gagal (${toolCallError ?? "error tidak diketahui"}). Fungsi tidak pernah dijalankan oleh PromptLab.`,
+    streamProbeFailure
+      ? "blocked"
+      : toolCallObserved === null
+        ? "failed"
+        : toolCallObserved
+          ? "supported"
+          : "not_observed",
+    streamProbeFailure
+      ? `Probe function call dilewati karena probe streaming gagal (${streamProbeFailure}). Tidak ada fungsi yang dijalankan.`
+      : toolCallObserved === true
+        ? `Gateway mengembalikan forced function call dengan argumen yang cocok schema dalam ${toolCallDurationMs} ms. PromptLab hanya mengamati dan tidak menjalankan fungsi.`
+        : toolCallObserved === false
+          ? `Request forced function call selesai dalam ${toolCallDurationMs} ms, tetapi tidak ada pemanggilan fungsi valid yang teramati.`
+          : `Probe function call gagal (${toolCallError ?? "error tidak diketahui"}) setelah ${toolCallDurationMs} ms. Fungsi tidak pernah dijalankan oleh PromptLab.`,
   );
   set(
     "cancellation",
-    cancellationObserved
-      ? "supported"
-      : cancellationError
-        ? "failed"
-        : "not_observed",
-    cancellationObserved
-      ? "AbortSignal lokal membatalkan request fetch dan adapter melaporkan PROVIDER_ABORTED. Ini tidak membuktikan gateway menghentikan pemrosesan remote."
-      : cancellationError
-        ? `Probe batal lokal gagal (${cancellationError}).`
-        : "Response selesai sebelum AbortSignal lokal membatalkan fetch.",
+    streamProbeFailure
+      ? "blocked"
+      : cancellationObserved
+        ? "supported"
+        : cancellationError
+          ? "failed"
+          : "not_observed",
+    streamProbeFailure
+      ? `Probe batal lokal dilewati karena probe streaming gagal (${streamProbeFailure}).`
+      : cancellationObserved
+        ? `AbortSignal lokal membatalkan request fetch dalam ${cancellationDurationMs} ms dan adapter melaporkan PROVIDER_ABORTED. Ini tidak membuktikan gateway menghentikan pemrosesan remote.`
+        : cancellationError
+          ? `Probe batal lokal gagal (${cancellationError}) setelah ${cancellationDurationMs} ms.`
+          : `Response selesai dalam ${cancellationDurationMs} ms sebelum AbortSignal lokal membatalkan fetch.`,
   );
-  const status = failedProbes ? "partial" : "completed";
+  const skippedInferenceCalls =
+    CAPABILITY_CAMPAIGN_INFERENCE_CALLS.campus_gateway -
+    attemptedInferenceCalls;
+  const status =
+    failedProbes || skippedInferenceCalls > 0 ? "partial" : "completed";
   const campaign = makeCapabilityCampaign({
     provider: "campus_gateway",
     requestedModel: environment.requestedModel,
     checkedAt,
     attemptedInferenceCalls,
     status,
-    reason: `${attemptedInferenceCalls} dari ${CAPABILITY_CAMPAIGN_INFERENCE_CALLS.campus_gateway} panggilan dicoba; ${failedProbes} probe gagal. Status tiap capability disimpan terpisah.`,
+    reason: `${attemptedInferenceCalls} dari ${CAPABILITY_CAMPAIGN_INFERENCE_CALLS.campus_gateway} panggilan dicoba; ${failedProbes} probe gagal; ${skippedInferenceCalls} probe dilewati karena prasyarat tidak terpenuhi. Timeout maksimum per request ${timeoutMs} ms. Durasi streaming: ${streamProbeSummary}. Status tiap capability disimpan terpisah.`,
     overrides,
   });
   const identityStream = successfulStreams.find(
@@ -1352,17 +1486,18 @@ async function runCampusCapabilityCampaign(
     .then(() => true)
     .catch(() => false);
   await recordLedgerOutcome({
-    outcome: failedProbes ? "failed" : "succeeded",
+    outcome: status === "partial" ? "failed" : "succeeded",
     requestedModel: environment.requestedModel,
     capabilitiesObserved: Object.entries(
       campaign.capabilities as Record<string, CapabilityEvidence>,
-    ).map(
-      ([name, evidence]) => `${name}:${evidence.status}`,
-    ),
+    ).map(([name, evidence]) => `${name}:${evidence.status}`),
   });
-  const providers = await providerStates(db, environment, undefined, projects).catch(
-    () => unavailableProviderStates(environment),
-  );
+  const providers = await providerStates(
+    db,
+    environment,
+    undefined,
+    projects,
+  ).catch(() => unavailableProviderStates(environment));
   return noStoreJson(
     {
       outcome: receiptSaved
@@ -1434,8 +1569,7 @@ async function runCodexCapabilityCampaign(
     ) {
       const receipt = {
         ...campaign,
-        configurationFingerprint:
-          codexConfigurationFingerprint(requestedModel),
+        configurationFingerprint: codexConfigurationFingerprint(requestedModel),
         accountFingerprint,
         codexHomeFingerprint,
       } as CapabilityCampaign & Record<string, unknown>;
@@ -1450,14 +1584,16 @@ async function runCodexCapabilityCampaign(
         .catch(() => false);
     }
     const providers = db
-      ? await providerStates(db, campusEnvironment(), runtime, projects).catch(() =>
-          unavailableProviderStates(campusEnvironment()),
+      ? await providerStates(db, campusEnvironment(), runtime, projects).catch(
+          () => unavailableProviderStates(campusEnvironment()),
         )
       : unavailableProviderStates(campusEnvironment());
     return noStoreJson(
       {
         outcome: "capability_campaign_blocked",
-        message: saved ? campaign.reason : `${campaign.reason}${db && projects.length ? " Receipt belum dapat disimpan." : ""}`,
+        message: saved
+          ? campaign.reason
+          : `${campaign.reason}${db && projects.length ? " Receipt belum dapat disimpan." : ""}`,
         campaign,
         providers,
       },
@@ -1480,7 +1616,8 @@ async function runCodexCapabilityCampaign(
       409,
     );
 
-  let connected: Awaited<ReturnType<typeof connectCodexAppServer>> | null = null;
+  let connected: Awaited<ReturnType<typeof connectCodexAppServer>> | null =
+    null;
   try {
     connected = await connectCodexAppServer();
     const account = await readCodexAccount(
@@ -1541,8 +1678,10 @@ async function runCodexCapabilityCampaign(
     const turnText =
       "Reply with exactly this text: PROMPTLAB CAPABILITY CAMPAIGN READY";
     type TurnResult = Awaited<ReturnType<typeof executeCodexTurn>>;
-    const turnResults: Array<{ value: TurnResult | null; error: string | null }> =
-      [];
+    const turnResults: Array<{
+      value: TurnResult | null;
+      error: string | null;
+    }> = [];
     let attemptedInferenceCalls = 0;
     let failedProbes = 0;
     for (let index = 0; index < 2; index += 1) {
@@ -1643,7 +1782,12 @@ async function runCodexCapabilityCampaign(
         ? "Codex app-server mengirim event text delta selama turn kampanye."
         : successfulTurns.length
           ? "Dua turn selesai tanpa event text delta yang teramati."
-          : `Probe streaming gagal (${turnResults.map((probe) => probe.error).filter(Boolean).join(", ") || "tidak ada respons"}).`,
+          : `Probe streaming gagal (${
+              turnResults
+                .map((probe) => probe.error)
+                .filter(Boolean)
+                .join(", ") || "tidak ada respons"
+            }).`,
     );
     set(
       "structuredOutput",
@@ -1739,8 +1883,7 @@ async function runCodexCapabilityCampaign(
     });
     const campaignReceipt = {
       ...campaign,
-      configurationFingerprint:
-        codexConfigurationFingerprint(requestedModel),
+      configurationFingerprint: codexConfigurationFingerprint(requestedModel),
       accountFingerprint: account.identityFingerprint,
       codexHomeFingerprint: connected.codexHomeFingerprint,
     } as CapabilityCampaign & Record<string, unknown>;
@@ -1775,16 +1918,14 @@ async function runCodexCapabilityCampaign(
       outcome: failedProbes ? "failed" : "succeeded",
       requestedModel,
       responseModel: successfulTurns[0]?.responseModel ?? null,
-      usage: successfulTurns.some((turn) =>
-        codexUsageObservationStatus(turn.usage) === "reported",
+      usage: successfulTurns.some(
+        (turn) => codexUsageObservationStatus(turn.usage) === "reported",
       )
         ? "reported"
         : "unknown",
       capabilitiesObserved: Object.entries(
         campaign.capabilities as Record<string, CapabilityEvidence>,
-      ).map(
-        ([name, evidence]) => `${name}:${evidence.status}`,
-      ),
+      ).map(([name, evidence]) => `${name}:${evidence.status}`),
     });
     const providers = await providerStates(
       db,
@@ -2092,10 +2233,9 @@ async function codexAction(
     const codexRuntime = await inspectCodexRuntime();
     return noStoreJson({
       outcome: "verified",
-      message:
-        completion.structuredOutputObserved
-          ? "Verifikasi Codex berhasil. Satu request kecil menghasilkan output sesuai schema; tidak ada retry."
-          : "Koneksi Codex berhasil, tetapi respons tidak cocok dengan schema output. Structured output tetap belum diketahui; tidak ada retry.",
+      message: completion.structuredOutputObserved
+        ? "Verifikasi Codex berhasil. Satu request kecil menghasilkan output sesuai schema; tidak ada retry."
+        : "Koneksi Codex berhasil, tetapi respons tidak cocok dengan schema output. Structured output tetap belum diketahui; tidak ada retry.",
       providers: await providerStates(
         database.db,
         campusEnvironment(),
@@ -2303,7 +2443,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const provider = new CampusChatProvider({ apiKey: environment.apiKey });
+  const provider = new CampusChatProvider({
+    apiKey: environment.apiKey,
+    timeoutMs: CAMPUS_CONNECTION_VERIFICATION_TIMEOUT_MS,
+    disableThinking: true,
+  });
   let completion;
   try {
     completion = await provider.complete(

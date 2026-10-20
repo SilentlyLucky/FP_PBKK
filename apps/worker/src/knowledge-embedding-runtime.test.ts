@@ -118,12 +118,12 @@ describe("knowledge embedding runtime", () => {
 
     expect(outcome).toMatchObject({
       status: "blocked",
-      reason: "source_version_not_current_or_permission_denied",
+      reason: "source_version_not_current",
     });
     expect(adapter.embed).not.toHaveBeenCalled();
   });
 
-  it("rechecks the active source version and permission immediately before each egress", async () => {
+  it("rechecks the active source version immediately before each egress", async () => {
     const chunk = {
       chunkId: "chunk-1",
       chunkChecksum: "c".repeat(64),
@@ -148,7 +148,7 @@ describe("knowledge embedding runtime", () => {
     });
 
     expect(outcome.reason).toBe(
-      "source_version_not_current_or_permission_denied",
+      "source_version_not_current",
     );
     expect(deps.listChunks).toHaveBeenCalledTimes(2);
     expect(adapter.embed).not.toHaveBeenCalled();

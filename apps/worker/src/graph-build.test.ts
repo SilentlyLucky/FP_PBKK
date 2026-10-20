@@ -293,6 +293,28 @@ describe("graph build source manifest", () => {
       ]),
     ).toThrowError(/manifest is incomplete/u);
   });
+
+  it("rejects a source that has not allowed campus indexing", () => {
+    expect(() =>
+      parseBuildManifest([
+        {
+          documentId: "66666666-6666-4666-8666-666666666666",
+          documentVersionId: identity.documentVersionId,
+          displayName: "Private source",
+          version: 1,
+          checksum: "source-checksum",
+          permission: "local_only",
+          chunks: [
+            {
+              chunkId: identity.chunkId,
+              ordinal: 0,
+              contentHash: "chunk-hash",
+            },
+          ],
+        },
+      ]),
+    ).toThrowError(/must allow campus indexing/u);
+  });
 });
 
 describe("structural Markdown graph links", () => {
@@ -529,7 +551,7 @@ function createIdentityTestDatabase(options: {
         displayName: "Mock source",
         version: 1,
         checksum: "source-checksum",
-        permission: "internal",
+        permission: "campus_indexer_allowed",
         chunks: [
           {
             chunkId: identity.chunkId,
@@ -550,7 +572,6 @@ function createIdentityTestDatabase(options: {
       callsUsed: 0,
       completedChunks: [],
       failedChunks: [],
-      allowCampusEgress: true,
       requestedModel: identity.requestedModel,
       runId: options.budgetRunId ?? identity.runId,
     },

@@ -42,6 +42,7 @@ describe("campus chat provider", () => {
     expect(init?.headers).toMatchObject({
       authorization: "Bearer test-only-secret",
     });
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty("think");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(result.responseModel).toBe("campus-qwen-alias");
     expect(result.usage.inputTokens).toMatchObject({
@@ -50,6 +51,99 @@ describe("campus chat provider", () => {
     });
     expect(result.usage.cacheReadTokens.status).toBe("unknown");
     expect(result.usage.completeness).toBe("partial");
+  });
+
+  it("sends think:false only when a bounded completion probe opts in", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            model: "campus-qwen-alias",
+            choices: [{ message: { content: "ready" }, finish_reason: "stop" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      disableThinking: true,
+      fetchImpl,
+    });
+
+    await provider.complete(request);
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    expect(JSON.parse(String(init?.body))).toMatchObject({ think: false });
+  });
+
+  it("applies the opt-in think:false setting to bounded streaming and tool probes", async () => {
+    const streamEvent = `data: ${JSON.stringify({
+      model: "campus-qwen-alias",
+      choices: [
+        {
+          delta: { content: '{"answer":"ready"}' },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 4, completion_tokens: 2 },
+    })}\n\ndata: [DONE]\n\n`;
+    const streamFetch = vi.fn<typeof fetch>(
+      async () =>
+        new Response(streamEvent, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+    const streamProvider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      disableThinking: true,
+      fetchImpl: streamFetch,
+    });
+    const streamResult = await streamProvider.streamCapabilityProbe(request);
+    const [, streamInit] = streamFetch.mock.calls[0]!;
+
+    expect(streamResult.text).toBe('{"answer":"ready"}');
+    expect(JSON.parse(String(streamInit?.body))).toMatchObject({
+      think: false,
+    });
+
+    const toolFetch = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            model: "campus-qwen-alias",
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      type: "function",
+                      function: {
+                        name: "promptlab_capability_probe",
+                        arguments:
+                          '{"confirmation":"PROMPTLAB TOOL CALL READY"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const toolProvider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      disableThinking: true,
+      fetchImpl: toolFetch,
+    });
+
+    await expect(toolProvider.probeToolCall(request)).resolves.toBe(true);
+
+    const [, toolInit] = toolFetch.mock.calls[0]!;
+    expect(JSON.parse(String(toolInit?.body))).toMatchObject({
+      think: false,
+    });
   });
 
   it("does not create a campus provider without both credential and confirmed model", () => {
@@ -85,6 +179,130 @@ describe("campus chat provider", () => {
     expect((failure as Error).message).not.toContain("test-only-secret");
     expect((failure as Error).message).not.toContain("should-not-leak");
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("distinguishes a transport failure from an HTTP response without leaking details", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("fetch failed", {
+        cause: { code: "ECONNRESET", message: "private detail" },
+      });
+    });
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      fetchImpl,
+    });
+
+    let failure: unknown;
+    try {
+      await provider.complete(request);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "PROVIDER_TRANSPORT_ERROR",
+      diagnostics: {
+        phase: "request_headers",
+        elapsedMs: expect.any(Number),
+        transportCode: "ECONNRESET",
+      },
+    });
+    expect((failure as Error).message).not.toContain("fetch failed");
+    expect((failure as Error).message).not.toContain("private detail");
+    expect((failure as Error).message).not.toContain("test-only-secret");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves upstream HTTP status and elapsed time without exposing the response body", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response("private gateway diagnostic", { status: 504 }),
+    );
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      fetchImpl,
+    });
+
+    let failure: unknown;
+    try {
+      await provider.complete(request);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "PROVIDER_HTTP_ERROR",
+      message: "Campus gateway returned HTTP 504",
+      diagnostics: {
+        phase: "response_headers",
+        responseStatus: 504,
+        elapsedMs: expect.any(Number),
+        responseHeadersMs: expect.any(Number),
+      },
+    });
+    expect((failure as Error).message).not.toContain(
+      "private gateway diagnostic",
+    );
+    expect((failure as Error).message).not.toContain("test-only-secret");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["", "  \n  "])(
+    "rejects a successful response with blank visible content (%j)",
+    async (content) => {
+      const fetchImpl = vi.fn<typeof fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({
+              model: "qwen3:14b",
+              choices: [{ message: { content }, finish_reason: "stop" }],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      );
+      const provider = new CampusChatProvider({
+        apiKey: "test-only-secret",
+        fetchImpl,
+      });
+
+      await expect(provider.complete(request)).rejects.toMatchObject({
+        code: "PROVIDER_RESPONSE_INVALID",
+        diagnostics: {
+          responseStatus: 200,
+          elapsedMs: expect.any(Number),
+          outputEmpty: true,
+        },
+      });
+    },
+  );
+
+  it("rejects output truncated by the provider token limit", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            model: "qwen3:14b",
+            choices: [
+              { message: { content: '{"answer":' }, finish_reason: "length" },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      fetchImpl,
+    });
+
+    await expect(provider.complete(request)).rejects.toMatchObject({
+      code: "PROVIDER_RESPONSE_INVALID",
+      message:
+        "Campus gateway response was truncated at the output token limit",
+      diagnostics: {
+        responseStatus: 200,
+        elapsedMs: expect.any(Number),
+        outputTruncated: true,
+      },
+    });
   });
 
   it("rejects blank credentials before making a request", () => {
@@ -148,8 +366,91 @@ describe("campus chat provider", () => {
 
     await expect(provider.complete(request)).rejects.toMatchObject({
       code: "PROVIDER_TIMEOUT",
+      diagnostics: {
+        phase: "request_headers",
+        elapsedMs: expect.any(Number),
+      },
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("records whether a streaming timeout happened before response headers", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!(signal instanceof AbortSignal)) {
+            reject(new Error("Expected request signal"));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      timeoutMs: 15,
+      fetchImpl,
+    });
+
+    await expect(provider.streamCapabilityProbe(request)).rejects.toMatchObject(
+      {
+        code: "PROVIDER_TIMEOUT",
+        diagnostics: {
+          phase: "request_headers",
+          elapsedMs: expect.any(Number),
+        },
+      },
+    );
+  });
+
+  it("records a finished stream choice when the gateway never terminates the SSE body", async () => {
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      const signal = init?.signal;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'data: {"model":"qwen3:14b","choices":[{"delta":{"content":"{\\"answer\\":\\"ok\\"}"},"finish_reason":"stop"}]}\n\n',
+              ),
+            );
+            if (signal instanceof AbortSignal) {
+              signal.addEventListener(
+                "abort",
+                () =>
+                  controller.error(new DOMException("Aborted", "AbortError")),
+                { once: true },
+              );
+            }
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    const provider = new CampusChatProvider({
+      apiKey: "test-only-secret",
+      timeoutMs: 15,
+      fetchImpl,
+    });
+
+    await expect(provider.streamCapabilityProbe(request)).rejects.toMatchObject(
+      {
+        code: "PROVIDER_TIMEOUT",
+        diagnostics: {
+          phase: "response_body",
+          responseStatus: 200,
+          responseHeadersMs: expect.any(Number),
+          firstChunkMs: expect.any(Number),
+          finishReasonSeen: true,
+          doneMarkerSeen: false,
+        },
+      },
+    );
   });
 
   it("preserves cancellation when the configured provider timeout is longer", async () => {

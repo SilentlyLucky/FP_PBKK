@@ -126,8 +126,6 @@ function embeddingFailureReason(error: unknown): string {
     typeof error.code === "string"
   ) {
     switch (error.code) {
-      case "SOURCE_PERMISSION_REQUIRED":
-        return "source_permission_not_granted";
       case "SOURCE_NOT_ELIGIBLE":
         return "source_version_not_current";
       case "SOURCE_NOT_FOUND":
@@ -205,7 +203,7 @@ export async function executeKnowledgeEmbeddingJob(input: {
       chunkCount: 0,
       embeddedChunkCount: 0,
       profile: null,
-      reason: "source_version_not_current_or_permission_denied",
+      reason: "source_version_not_current",
     };
   }
 
@@ -255,8 +253,8 @@ export async function executeKnowledgeEmbeddingJob(input: {
 
   for (const chunk of chunks) {
     try {
-      // This query rechecks active-version eligibility and Campus permission
-      // immediately before each source-text egress.
+      // This query rechecks active-version eligibility immediately before each
+      // source-text egress.
       const currentChunks = await dependencies.listChunks(input.db, source);
       const current = currentChunks.find(
         (candidate) =>
@@ -265,7 +263,7 @@ export async function executeKnowledgeEmbeddingJob(input: {
       );
       if (!current) {
         return readinessOutcome(
-          "source_version_not_current_or_permission_denied",
+          "source_version_not_current",
           embeddedChunkCount ? "partial" : "blocked",
         );
       }
@@ -341,14 +339,6 @@ export async function createWorkspaceQueryEmbedding(input: {
   ) {
     return { embedding: null, reason: "source_manifest_missing" };
   }
-  const indexableSourceIds = selectedSourceIds.filter(
-    (sourceId) =>
-      manifestBySource.get(sourceId)?.sourcePermission ===
-      "campus_indexer_allowed",
-  );
-  if (!indexableSourceIds.length) {
-    return { embedding: null, reason: "source_permission_not_granted" };
-  }
   if (!input.adapter || !input.requestedModel) {
     return {
       embedding: null,
@@ -368,7 +358,7 @@ export async function createWorkspaceQueryEmbedding(input: {
     }
     const readiness = await dependencies.getReadiness(input.db, {
       projectId: input.projectId,
-      selectedSourceIds: indexableSourceIds,
+      selectedSourceIds,
       profile: resolution.profile,
     });
     if (

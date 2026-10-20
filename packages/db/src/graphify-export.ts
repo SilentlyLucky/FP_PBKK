@@ -6,7 +6,6 @@
 
 const MAX_GRAPHIFY_NODES = 2_000;
 const MAX_GRAPHIFY_LINKS = 4_000;
-const MAX_GRAPHIFY_SOURCES = 20;
 const MAX_GRAPHIFY_NODE_SPAN = 500;
 const MAX_GRAPHIFY_LINK_SPAN = 2_000;
 const GRAPHIFY_FILE_TYPES = new Set([
@@ -127,10 +126,9 @@ function requiredId(value: unknown, field: string): string {
 function parseSelectedSources(value: unknown): GraphifySelectedSource[] {
   if (
     !Array.isArray(value) ||
-    value.length < 1 ||
-    value.length > MAX_GRAPHIFY_SOURCES
+    value.length < 1
   ) {
-    invalid(`Select between one and ${MAX_GRAPHIFY_SOURCES} source versions.`);
+    invalid("Select at least one source version.");
   }
   const result: GraphifySelectedSource[] = [];
   const documents = new Set<string>();

@@ -43,7 +43,6 @@ export async function GET(
         id: schema.documents.id,
         name: schema.documents.displayName,
         deletedAt: schema.documents.deletedAt,
-        permission: schema.documents.trust,
         versionId: schema.documentVersions.id,
         version: schema.documentVersions.version,
         checksum: schema.documentVersions.checksum,
@@ -64,14 +63,13 @@ export async function GET(
           eq(schema.documents.projectId, projectId),
           eq(schema.documents.id, sourceId),
           isNull(schema.documents.deletedAt),
-          eq(schema.documents.trust, "campus_indexer_allowed"),
           eq(schema.documentVersions.projectId, projectId),
           eq(schema.documentVersions.checksum, parsedQuery.data.checksum),
           eq(schema.documentVersions.eligible, true),
         ),
       )
       .limit(1);
-    if (!source || source.permission !== "campus_indexer_allowed") {
+    if (!source) {
       return Response.json(
         { error: "SOURCE_VERSION_NOT_FOUND" },
         { status: 404 },

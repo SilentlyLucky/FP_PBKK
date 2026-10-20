@@ -19,13 +19,13 @@ test("five navigation destinations are reachable and capabilities stay honest", 
 
   await expect(
     page.getByText(
-      "Setiap pesan dioptimasi Senopati lalu otomatis dijalankan Codex. Versi prompt tersimpan tidak diaktifkan otomatis.",
+      "Pilih atau buat proyek di bagian atas untuk memulai percakapan.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Pesan" })).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Kirim", exact: true }),
+    page.getByRole("button", { name: "Kirim pesan", exact: true }),
   ).toBeDisabled();
 
   for (const [route, heading] of productPages) {

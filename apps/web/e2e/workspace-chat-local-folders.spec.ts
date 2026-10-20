@@ -126,6 +126,7 @@ async function installWorkspaceFixtures(
   let sourceImported = graphEvidenceJourney;
   let runNumber = 0;
   let promptNumber = 0;
+  const storedConversations: Array<Record<string, unknown>> = [];
   const log: WorkspaceFixtureLog = {
     promptWrites: [],
     runWrites: [],
@@ -149,6 +150,7 @@ async function installWorkspaceFixtures(
     versionId: sourceVersionId,
     extractStatus: "completed",
     chunkCount: 1,
+    semanticReadiness: { status: "ready" },
   };
   const secondSource = {
     ...source,
@@ -217,6 +219,47 @@ async function installWorkspaceFixtures(
         ],
         projectPrerequisite: "satisfied",
       });
+      return;
+    }
+
+    const conversationsPath = `/api/projects/${projectId}/workspace/conversations`;
+    if (pathname === conversationsPath && method === "GET") {
+      await json(route, { conversations: storedConversations });
+      return;
+    }
+    if (pathname === conversationsPath && method === "PUT") {
+      const body = request.postDataJSON() as {
+        conversations?: Array<Record<string, unknown>>;
+      };
+      storedConversations.splice(
+        0,
+        storedConversations.length,
+        ...(body.conversations ?? []),
+      );
+      await json(route, { saved: storedConversations.length });
+      return;
+    }
+    const conversationMatch = pathname.match(
+      new RegExp(
+        `^/api/projects/${projectId}/workspace/conversations/([^/]+)$`,
+      ),
+    );
+    if (conversationMatch && method === "PUT") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      const index = storedConversations.findIndex(
+        (conversation) => conversation.id === conversationMatch[1],
+      );
+      if (index < 0) storedConversations.unshift(body);
+      else storedConversations[index] = body;
+      await json(route, { saved: true });
+      return;
+    }
+    if (conversationMatch && method === "DELETE") {
+      const index = storedConversations.findIndex(
+        (conversation) => conversation.id === conversationMatch[1],
+      );
+      if (index >= 0) storedConversations.splice(index, 1);
+      await json(route, { deleted: true });
       return;
     }
 
@@ -493,7 +536,7 @@ async function installWorkspaceFixtures(
             checksum: "a".repeat(64),
             chunkCount: 1,
             updated: false,
-            permission: body.permission,
+            permission: "campus_indexer_allowed",
           },
           201,
         );
@@ -687,7 +730,41 @@ async function installWorkspaceFixtures(
   return log;
 }
 
-test("Workspace runs the mandatory optimization flow and restores local conversation history", async ({
+async function openWorkspaceContext(page: Page) {
+  const toggle = page
+    .getByTestId("workspace-chat-panel")
+    .getByRole("button", { name: "Konteks", exact: true });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(
+    page.getByRole("complementary", { name: "Konteks percakapan" }),
+  ).toBeVisible();
+}
+
+async function openWorkspaceFolderAccess(page: Page) {
+  await openWorkspaceContext(page);
+  await page
+    .getByRole("complementary", { name: "Konteks percakapan" })
+    .locator("summary")
+    .filter({ hasText: "Baca file workspace" })
+    .click();
+}
+
+async function closeWorkspaceContext(page: Page) {
+  const toggle = page
+    .getByTestId("workspace-chat-panel")
+    .getByRole("button", { name: "Konteks", exact: true });
+  if ((await toggle.getAttribute("aria-expanded")) === "true") {
+    await page
+      .getByRole("complementary", { name: "Konteks percakapan" })
+      .getByRole("button", { name: "Tutup panel konteks" })
+      .click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+}
+
+test("Workspace runs the mandatory optimization flow and restores project conversation history", async ({
   page,
 }) => {
   const fixture = await installWorkspaceFixtures(page);
@@ -725,7 +802,7 @@ test("Workspace runs the mandatory optimization flow and restores local conversa
     page.getByText(
       "Riwayat percakapan dan pengaturan tersimpan di browser ini. Riwayat ini tidak disinkronkan ke server.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect(fixture.runWrites).toHaveLength(1);
   expect(fixture.runWrites[0]).toMatchObject({
     provider: "campus_gateway",
@@ -784,8 +861,9 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
     ],
   });
   await page.goto("/workspace");
+  await openWorkspaceContext(page);
 
-  const thinking = page.getByLabel("Thinking Codex");
+  const thinking = page.getByLabel("Reasoning effort Codex");
   await thinking.selectOption("auto");
   await expect(thinking).toHaveValue("auto");
   const message = page.getByRole("textbox", { name: "Pesan" });
@@ -805,9 +883,10 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
   });
 
   await page.reload();
-  await expect(page.getByLabel("Thinking Codex")).toHaveValue("auto");
-  await page.getByLabel("Thinking Codex").selectOption("high");
-  await expect(page.getByLabel("Thinking Codex")).toHaveValue("high");
+  await openWorkspaceContext(page);
+  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("auto");
+  await page.getByLabel("Reasoning effort Codex").selectOption("high");
+  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("high");
   const followUp = page.getByRole("textbox", { name: "Pesan" });
   await followUp.fill("Jawab singkat dengan effort tinggi.");
   await followUp.press("Enter");
@@ -826,7 +905,8 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
   });
 
   await page.reload();
-  await expect(page.getByLabel("Thinking Codex")).toHaveValue("high");
+  await openWorkspaceContext(page);
+  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("high");
   expect(fixture.unexpectedRequests).toEqual([]);
 });
 
@@ -838,15 +918,15 @@ test("Workspace selects and persists Hybrid without a graph snapshot", async ({
     outcomes: [{ kind: "completed", text: "Jawaban dengan pencarian Hybrid." }],
   });
   await page.goto("/workspace");
-  await page.locator("summary").filter({ hasText: "Sumber" }).click();
+  await openWorkspaceContext(page);
   await page.locator(`#workspace-source-${sourceId}`).check();
-  await page.locator("summary").filter({ hasText: "Mode pencarian" }).click();
-  await page.getByLabel("Mode pencarian").selectOption("hybrid");
+  await page.getByLabel("Strategi").selectOption("hybrid");
+  await closeWorkspaceContext(page);
 
   await page
     .getByRole("textbox", { name: "Pesan" })
     .fill("Cari jawaban dengan pencarian Hybrid.");
-  await page.getByRole("button", { name: "Kirim", exact: true }).click();
+  await page.getByRole("button", { name: "Kirim pesan", exact: true }).click();
   await expect(
     page.getByText("Jawaban dengan pencarian Hybrid.", { exact: true }),
   ).toBeVisible();
@@ -859,9 +939,8 @@ test("Workspace selects and persists Hybrid without a graph snapshot", async ({
   ).toBeUndefined();
 
   await page.reload();
-  await page.locator("summary").filter({ hasText: "Sumber" }).click();
-  await page.locator("summary").filter({ hasText: "Mode pencarian" }).click();
-  await expect(page.getByLabel("Mode pencarian")).toHaveValue("hybrid");
+  await openWorkspaceContext(page);
+  await expect(page.getByLabel("Strategi")).toHaveValue("hybrid");
   expect(fixture.unexpectedRequests).toEqual([]);
 });
 
@@ -895,15 +974,17 @@ test("Workspace preserves a saved manual effort when the live catalog drops it",
     );
   }, projectId);
   await page.goto("/workspace");
+  await openWorkspaceContext(page);
 
-  const thinking = page.getByLabel("Thinking Codex");
+  const thinking = page.getByLabel("Reasoning effort Codex");
   await expect(thinking).toHaveValue("max");
   await expect(thinking.locator('option[value="max"]')).toHaveText(
     "Maksimal · tidak didukung model saat ini",
   );
-  await expect(
-    page.getByText(/akan dikirim apa adanya dan worker akan menolak run/i),
-  ).toBeVisible();
+  await expect(thinking.locator('option[value="max"]')).toHaveAttribute(
+    "disabled",
+    "",
+  );
 
   const message = page.getByRole("textbox", { name: "Pesan" });
   await message.fill("Gunakan pilihan yang tersimpan.");
@@ -921,7 +1002,8 @@ test("Workspace preserves a saved manual effort when the live catalog drops it",
     },
   });
   await page.reload();
-  await expect(page.getByLabel("Thinking Codex")).toHaveValue("max");
+  await openWorkspaceContext(page);
+  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("max");
   expect(fixture.unexpectedRequests).toEqual([]);
 });
 
@@ -979,14 +1061,15 @@ test("Workspace shows the two source-versioned GraphRAG quotes carried to Codex"
   });
 
   await page.goto("/workspace");
-  await page.locator("summary").filter({ hasText: "Sumber" }).click();
+  await openWorkspaceContext(page);
   await page.locator(`#workspace-source-${sourceId}`).check();
   await page.locator(`#workspace-source-${secondSourceId}`).check();
-  await page.getByLabel("Mode pencarian").selectOption("graph");
+  await page.getByLabel("Strategi").selectOption("graph");
+  await closeWorkspaceContext(page);
   await page
     .getByRole("textbox", { name: "Pesan" })
     .fill("Ringkas hubungan modul dari sumber terpilih.");
-  await page.getByRole("button", { name: "Kirim", exact: true }).click();
+  await page.getByRole("button", { name: "Kirim pesan", exact: true }).click();
 
   const evidencePanel = page.getByRole("region", {
     name: "Bukti GraphRAG yang disertakan ke Codex",
@@ -1034,9 +1117,7 @@ test("an unverified Senopati connection refuses normal chat even with verified C
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Pesan" })).toBeDisabled();
   await expect(
-    page.getByText(
-      "Setiap pesan harus dioptimasi sebelum dapat dikirim ke Codex.",
-    ),
+    page.getByText("Senopati perlu diverifikasi untuk mengoptimasi prompt."),
   ).toBeVisible();
   expect(fixture.promptWrites).toEqual([]);
   expect(fixture.runWrites).toEqual([]);
@@ -1073,7 +1154,9 @@ test("provider failure, empty output, no-op, and an executed candidate stay dist
 
   async function send(message: string) {
     await page.getByRole("textbox", { name: "Pesan" }).fill(message);
-    await page.getByRole("button", { name: "Kirim", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Kirim pesan", exact: true })
+      .click();
   }
 
   await send("Pertama");
@@ -1140,12 +1223,12 @@ test("Workspace refuses to send when Codex target is unavailable", async ({
   await page.goto("/workspace");
 
   await expect(
-    page.getByText(
-      "Target Codex belum terverifikasi. Pesan tidak akan dijawab dari Senopati saja.",
-    ),
+    page.getByText("Codex perlu terverifikasi untuk menjawab pesan."),
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Pesan" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Kirim" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Kirim pesan", exact: true }),
+  ).toBeDisabled();
   expect(fixture.promptWrites).toEqual([]);
   expect(fixture.runWrites).toEqual([]);
 });
@@ -1165,8 +1248,7 @@ test("composer folder flow connects with read-only consent, imports one file, se
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Percakapan baru" }).click();
-  await page.locator("summary").filter({ hasText: "Folder dan file" }).click();
+  await openWorkspaceFolderAccess(page);
 
   await page
     .getByRole("button", { name: "Hubungkan folder", exact: true })
@@ -1201,18 +1283,16 @@ test("composer folder flow connects with read-only consent, imports one file, se
   await expect(
     page.locator("pre").getByText("Panduan proyek FP_PBKK", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("radio", { name: /Izinkan Campus Gateway/ }).check();
   await page.getByRole("button", { name: "Impor file terpilih" }).click();
   await expect(
     page.getByText("Sumber lokal diimpor sebagai v1.", { exact: true }),
   ).toBeVisible();
 
-  await page.locator("summary").filter({ hasText: "Sumber" }).click();
   const selectedSource = page.getByRole("checkbox", { name: /README\.md/ });
   await expect(selectedSource).toBeChecked();
   await expect(
     page.getByText(
-      "Dokumen terpilih hanya diakses setelah izin berbagi terbaru diverifikasi; evidence GraphRAG yang terpilih diteruskan ke Codex sebagai konteks.",
+      "Sumber pilihan akan dipakai setelah izin diverifikasi untuk run.",
     ),
   ).toBeVisible();
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
@@ -1227,6 +1307,11 @@ test("composer folder flow connects with read-only consent, imports one file, se
     ).toBeLessThanOrEqual(viewportDimensions.viewportWidth);
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page
+      .getByTestId("workspace-chat-panel")
+      .getByRole("button", { name: "Konteks", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
 
   const screenshotDirectory = resolve(
     process.cwd(),
@@ -1249,7 +1334,7 @@ test("composer folder flow connects with read-only consent, imports one file, se
   await page
     .getByRole("textbox", { name: "Pesan" })
     .fill("Ringkas file yang saya pilih.");
-  await page.getByRole("button", { name: "Kirim", exact: true }).click();
+  await page.getByRole("button", { name: "Kirim pesan", exact: true }).click();
   await expect(
     page.getByText("Halo! Ada yang bisa saya bantu?", { exact: true }),
   ).toBeVisible();
@@ -1263,13 +1348,14 @@ test("composer folder flow connects with read-only consent, imports one file, se
     },
   ]);
   expect(fixture.importWrites).toEqual([
-    { path: "README.md", permission: "campus_indexer_allowed" },
+    { path: "README.md" },
   ]);
   expect(fixture.runWrites[0]).toMatchObject({
     retrieval: { strategy: "auto", sourceIds: [sourceId] },
   });
   expect(JSON.stringify(fixture.registrationWrites)).not.toContain("/home/");
 
+  await openWorkspaceContext(page);
   await page.getByRole("button", { name: "Cabut", exact: true }).click();
   await expect(
     page
@@ -1294,7 +1380,7 @@ test("registering another folder clears the old grant and allows a fresh connect
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/workspace");
-  await page.locator("summary").filter({ hasText: "Folder dan file" }).click();
+  await openWorkspaceFolderAccess(page);
   await page.getByRole("button", { name: "Hubungkan folder" }).click();
 
   await page.getByRole("button", { name: "FP_PBKK", exact: true }).click();
@@ -1398,7 +1484,7 @@ test("a folder remains connected when read access fails and can be retried", asy
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/workspace");
-  await page.locator("summary").filter({ hasText: "Folder dan file" }).click();
+  await openWorkspaceFolderAccess(page);
   await page.getByRole("button", { name: "Hubungkan folder" }).click();
   await page.getByRole("button", { name: "FP_PBKK", exact: true }).click();
   await page.getByRole("button", { name: "Pilih folder “FP_PBKK”" }).click();

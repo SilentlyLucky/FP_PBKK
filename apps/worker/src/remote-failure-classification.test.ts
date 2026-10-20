@@ -43,6 +43,26 @@ describe("remote failure outcome classification", () => {
         remoteRequestActive: true,
       }),
     ).toBe(true);
+    expect(
+      classifyRemoteOutcomeUnknown({
+        code: "PROVIDER_TRANSPORT_ERROR",
+        remoteRequestActive: true,
+      }),
+    ).toBe(true);
+    expect(
+      classifyRemoteOutcomeUnknown({
+        code: "PROVIDER_HTTP_ERROR",
+        providerHttpStatus: 504,
+        remoteRequestActive: true,
+      }),
+    ).toBe(true);
+    expect(
+      classifyRemoteOutcomeUnknown({
+        code: "PROVIDER_HTTP_ERROR",
+        providerHttpStatus: 429,
+        remoteRequestActive: true,
+      }),
+    ).toBe(false);
   });
 
   it("does not classify a local failure as an unknown remote outcome", () => {

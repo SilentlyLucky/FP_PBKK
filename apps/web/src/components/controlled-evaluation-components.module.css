@@ -23,7 +23,13 @@
   padding: 16px;
 }
 
-.armSelection legend,
+.armLegend {
+  margin: 0;
+  padding-inline: 4px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .sourceSelection legend {
   padding-inline: 4px;
   font-size: 13px;
@@ -34,9 +40,12 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.armOptions label,
+.armOptions li,
 .sourceList label {
   display: flex;
   min-width: 0;
@@ -46,10 +55,8 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
-  cursor: pointer;
 }
 
-.armOptions input,
 .sourceList input {
   flex: none;
   width: 18px;
@@ -58,7 +65,7 @@
   accent-color: var(--primary);
 }
 
-.armOptions label > span,
+.armOptions li > span,
 .sourceList label > span {
   display: grid;
   min-width: 0;

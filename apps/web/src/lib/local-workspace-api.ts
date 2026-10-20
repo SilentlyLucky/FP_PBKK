@@ -36,7 +36,6 @@ export interface LocalWorkspaceRouteDependencies {
   readonly persistSource?: (
     projectId: string,
     file: LocalWorkspaceReadResult,
-    permission: SourcePermission,
   ) => Promise<ImportResult>;
   readonly now?: () => Date;
 }
@@ -117,25 +116,23 @@ function requireOneQueryValue(
 export function buildLocalWorkspaceKnowledgeSourceInput(
   projectId: string,
   file: LocalWorkspaceReadResult,
-  permission: SourcePermission,
   now: Date,
 ): KnowledgeSourceInput {
   const name = file.path.split("/").at(-1) ?? "";
-  const extension = name.match(/\.(txt|md|markdown)$/iu)?.[1]?.toLowerCase();
-  if (!extension) throw new LocalWorkspaceApiError("UNSUPPORTED_SOURCE_FILE");
+  const isMarkdown = /\.(md|markdown)$/iu.test(name);
 
   const checked = validateKnowledgeText({
     displayName: name,
     content: file.content,
   });
-  const contentType = extension === "txt" ? "text/plain" : "text/markdown";
+  const contentType = isMarkdown ? "text/markdown" : "text/plain";
   return {
     projectId,
     displayName: checked.displayName,
     content: checked.content,
     contentType,
     sourceKind: "upload",
-    permission,
+    permission: "campus_indexer_allowed",
     sourceRef: null,
     sourceMetadata: {
       origin: "local_workspace",
@@ -151,19 +148,13 @@ export function buildLocalWorkspaceKnowledgeSourceInput(
 async function persistLocalWorkspaceSource(
   projectId: string,
   file: LocalWorkspaceReadResult,
-  permission: SourcePermission,
   now: Date,
 ): Promise<ImportResult> {
   const database = databaseOrUnavailable();
   if ("response" in database) {
     throw new LocalWorkspaceApiError("DATABASE_UNAVAILABLE");
   }
-  const input = buildLocalWorkspaceKnowledgeSourceInput(
-    projectId,
-    file,
-    permission,
-    now,
-  );
+  const input = buildLocalWorkspaceKnowledgeSourceInput(projectId, file, now);
   const snapshot = await knowledgeSnapshotStoreFromEnvironment().put(
     projectId,
     file.rawBytes,
@@ -195,7 +186,7 @@ async function persistLocalWorkspaceSource(
     checksum: source.checksum,
     chunkCount: source.chunkCount,
     updated: Boolean(existing),
-    permission,
+    permission: "campus_indexer_allowed",
   };
 }
 
@@ -209,11 +200,8 @@ export function createLocalWorkspaceRouteHandlers(
   const now = dependencies.now ?? (() => new Date());
   const persistSource =
     dependencies.persistSource ??
-    ((
-      projectId: string,
-      file: LocalWorkspaceReadResult,
-      permission: SourcePermission,
-    ) => persistLocalWorkspaceSource(projectId, file, permission, now()));
+    ((projectId: string, file: LocalWorkspaceReadResult) =>
+      persistLocalWorkspaceSource(projectId, file, now()));
 
   function guard(request: Request, rawProjectId: string) {
     assertLocalSameOrigin(request);
@@ -466,22 +454,12 @@ export function createLocalWorkspaceRouteHandlers(
         if (!record(body)) {
           throw new LocalWorkspaceApiError("REQUEST_INVALID");
         }
-        if (!("permission" in body)) {
-          throw new LocalWorkspaceApiError("SOURCE_PERMISSION_REQUIRED");
-        }
-        if (Object.keys(body).length !== 2) {
+        if (Object.keys(body).length !== 1) {
           throw new LocalWorkspaceApiError("REQUEST_INVALID");
-        }
-        if (
-          body.permission !== "local_only" &&
-          body.permission !== "campus_indexer_allowed"
-        ) {
-          throw new LocalWorkspaceApiError("SOURCE_PERMISSION_REQUIRED");
         }
         if (typeof body.path !== "string" || !body.path) {
           throw new LocalWorkspaceApiError("REQUEST_INVALID");
         }
-        const permission = body.permission as SourcePermission;
         if (!databaseConfigured()) {
           throw new LocalWorkspaceApiError("DATABASE_UNAVAILABLE");
         }
@@ -493,10 +471,7 @@ export function createLocalWorkspaceRouteHandlers(
           );
         }
         const file = await runtime.gateway.read(projectId, grantId, body.path);
-        if (!/\.(txt|md|markdown)$/iu.test(file.path)) {
-          throw new LocalWorkspaceApiError("UNSUPPORTED_SOURCE_FILE");
-        }
-        const imported = await persistSource(projectId, file, permission);
+        const imported = await persistSource(projectId, file);
         return Response.json(imported, { status: 201 });
       } catch (error) {
         if (error instanceof KnowledgeOperationError) {

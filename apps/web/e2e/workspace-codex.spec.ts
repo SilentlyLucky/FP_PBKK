@@ -39,6 +39,62 @@ function respond(route: Route, body: unknown, status = 200) {
   });
 }
 
+async function respondWorkspaceConversationRoute(
+  route: Route,
+  url: URL,
+  method: string,
+  storedConversations: Map<string, Array<Record<string, unknown>>>,
+) {
+  const collection = url.pathname.match(
+    /^\/api\/projects\/([^/]+)\/workspace\/conversations$/,
+  );
+  if (collection && method === "GET") {
+    await respond(route, {
+      conversations: storedConversations.get(collection[1]!) ?? [],
+    });
+    return true;
+  }
+  if (collection && method === "PUT") {
+    const body = requestBody(route.request());
+    const conversations = Array.isArray(body.conversations)
+      ? (body.conversations as Array<Record<string, unknown>>)
+      : [];
+    storedConversations.set(collection[1]!, conversations);
+    await respond(route, { saved: conversations.length });
+    return true;
+  }
+
+  const record = url.pathname.match(
+    /^\/api\/projects\/([^/]+)\/workspace\/conversations\/([^/]+)$/,
+  );
+  if (record && method === "PUT") {
+    const body = requestBody(route.request());
+    const conversations = storedConversations.get(record[1]!) ?? [];
+    const index = conversations.findIndex(
+      (conversation) => conversation.id === record[2],
+    );
+    if (index < 0) conversations.unshift(body);
+    else conversations[index] = body;
+    storedConversations.set(record[1]!, conversations);
+    await respond(route, { saved: true });
+    return true;
+  }
+  if (record && method === "DELETE") {
+    const conversations = storedConversations.get(record[1]!) ?? [];
+    storedConversations.set(
+      record[1]!,
+      conversations.filter((conversation) => conversation.id !== record[2]),
+    );
+    await respond(route, { deleted: true });
+    return true;
+  }
+  return false;
+}
+
+function requestBody(request: ReturnType<Route["request"]>) {
+  return request.postDataJSON() as Record<string, unknown>;
+}
+
 function codexProvider(
   status: "configured_unverified" | "verified",
   model = selectedModel,
@@ -76,6 +132,7 @@ async function mockCodexJourney(page: Page) {
   let runCreated = false;
   let promptWrite: Record<string, unknown> | null = null;
   let runWrite: Record<string, unknown> | null = null;
+  const storedConversations = new Map<string, Array<Record<string, unknown>>>();
   const verifyModels: string[] = [];
   const providerActions: string[] = [];
 
@@ -92,6 +149,16 @@ async function mockCodexJourney(page: Page) {
     const request = route.request();
     const method = request.method();
     const url = new URL(request.url());
+    if (
+      await respondWorkspaceConversationRoute(
+        route,
+        url,
+        method,
+        storedConversations,
+      )
+    ) {
+      return;
+    }
 
     if (url.pathname === "/api/projects" && method === "GET") {
       await respond(route, {
@@ -459,12 +526,23 @@ async function mockInlineRunJourney(page: Page) {
   const createdRunIds: string[] = [];
   const promptWrites: Record<string, unknown>[] = [];
   const runWrites: Record<string, unknown>[] = [];
+  const storedConversations = new Map<string, Array<Record<string, unknown>>>();
   let promptVersion = 0;
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const method = request.method();
     const url = new URL(request.url());
+    if (
+      await respondWorkspaceConversationRoute(
+        route,
+        url,
+        method,
+        storedConversations,
+      )
+    ) {
+      return;
+    }
 
     if (url.pathname === "/api/projects" && method === "GET") {
       await respond(route, {
@@ -676,14 +754,13 @@ test("Codex login and verification cannot bypass mandatory Senopati optimization
     page.getByText("Senopati tidak tersedia", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Senopati belum terverifikasi. Setiap pesan harus dioptimasi sebelum dapat dikirim ke Codex.",
-      { exact: true },
-    ),
+    page.getByText("Senopati perlu diverifikasi untuk mengoptimasi prompt.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Pesan" })).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Kirim", exact: true }),
+    page.getByRole("button", { name: "Kirim pesan", exact: true }),
   ).toBeDisabled();
   expect(mocks.promptWrite).toBeNull();
   expect(mocks.runWrite).toBeNull();
@@ -699,11 +776,14 @@ test("Workspace streams optimized answers without leaking state across runs or p
   await expect(page.getByRole("heading", { name: "Workspace" })).toBeVisible();
   await expect(page.getByText("Senopati siap", { exact: true })).toBeVisible();
   const message = page.getByRole("textbox", { name: "Pesan" });
-  const sendButton = page.getByRole("button", { name: "Kirim", exact: true });
+  const sendButton = page.getByRole("button", {
+    name: "Kirim pesan",
+    exact: true,
+  });
 
   await message.fill("Return a concise answer for project A.");
   await sendButton.click();
-  const resultPanel = page.getByRole("region", { name: "Jawaban Senopati" });
+  const resultPanel = page.getByRole("region", { name: "Jawaban Codex" });
   await expect(resultPanel).toHaveCount(1);
   const firstRunId = mocks.createdRunIds[0]!;
   await expect(page.locator("html")).toHaveAttribute(
@@ -772,14 +852,14 @@ test("Workspace streams optimized answers without leaking state across runs or p
   ).toBeVisible();
 
   await page.locator("#active-project").selectOption(inlineProjectB);
-  await expect(
-    page.getByRole("region", { name: "Jawaban Senopati" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Jawaban Codex" })).toHaveCount(
+    0,
+  );
   await message.fill("Return an answer for project B.");
   await sendButton.click();
   await expect.poll(() => mocks.createdRunIds.length).toBe(3);
   const projectBResult = page.getByRole("region", {
-    name: "Jawaban Senopati",
+    name: "Jawaban Codex",
   });
   const projectBRunId = mocks.createdRunIds[2]!;
   await expect(page.locator("html")).toHaveAttribute(

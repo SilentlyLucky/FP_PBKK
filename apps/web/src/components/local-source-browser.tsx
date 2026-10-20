@@ -22,8 +22,6 @@ import {
 
 import styles from "./local-source-browser.module.css";
 
-type SourcePermission = "local_only" | "campus_indexer_allowed";
-
 interface WorkspaceStatus {
   projectConfigured: boolean;
   databaseConfigured: boolean;
@@ -211,7 +209,6 @@ function LocalSourceBrowserForProject({
   );
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [permission, setPermission] = useState<SourcePermission | "">("");
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -297,7 +294,6 @@ function LocalSourceBrowserForProject({
     setSearchResult(null);
     setSearchBusy(false);
     setSearchError(null);
-    setPermission("");
     setImportBusy(false);
     setImportMessage(null);
     setImportError(null);
@@ -399,7 +395,6 @@ function LocalSourceBrowserForProject({
       setPreviewError(null);
       setImportMessage(null);
       setImportError(null);
-      setPermission("");
       try {
         const response = await fetch(
           "/api/projects/" +
@@ -872,14 +867,7 @@ function LocalSourceBrowserForProject({
   async function importPreview() {
     const currentGrant = grantRef.current;
     const currentPreview = preview;
-    const currentPermission = permission;
-    if (
-      !currentGrant ||
-      !currentPreview ||
-      !currentPermission ||
-      !status?.databaseConfigured
-    )
-      return;
+    if (!currentGrant || !currentPreview || !status?.databaseConfigured) return;
     setImportBusy(true);
     setImportError(null);
     setImportMessage(null);
@@ -895,7 +883,6 @@ function LocalSourceBrowserForProject({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             path: currentPreview.path,
-            permission: currentPermission,
           }),
         },
       );
@@ -1473,43 +1460,6 @@ function LocalSourceBrowserForProject({
                             file. Jalur absolut folder tidak dikirim ke
                             knowledge.
                           </p>
-                          <fieldset className={styles.permissionChoices}>
-                            <legend>Kebijakan berbagi untuk file ini</legend>
-                            <label>
-                              <input
-                                type="radio"
-                                name="local-source-permission"
-                                value="local_only"
-                                checked={permission === "local_only"}
-                                onChange={() => setPermission("local_only")}
-                              />
-                              <span>
-                                <strong>Hanya lokal</strong>
-                                <span>Jangan kirim ke Campus Gateway.</span>
-                              </span>
-                            </label>
-                            <label>
-                              <input
-                                type="radio"
-                                name="local-source-permission"
-                                value="campus_indexer_allowed"
-                                checked={
-                                  permission === "campus_indexer_allowed"
-                                }
-                                onChange={() =>
-                                  setPermission("campus_indexer_allowed")
-                                }
-                              />
-                              <span>
-                                <strong>Izinkan Campus Gateway</strong>
-                                <span>
-                                  Teks dapat dikirim ke layanan indexing
-                                  eksternal yang telah dikonfigurasi. Build
-                                  tetap meminta persetujuan egress terpisah.
-                                </span>
-                              </span>
-                            </label>
-                          </fieldset>
                           {importError ? (
                             <p className="error-message" role="alert">
                               {importError}
@@ -1522,11 +1472,7 @@ function LocalSourceBrowserForProject({
                           ) : null}
                           <Button
                             type="button"
-                            disabled={
-                              !permission ||
-                              importBusy ||
-                              !status?.databaseConfigured
-                            }
+                            disabled={importBusy || !status?.databaseConfigured}
                             onClick={() => void importPreview()}
                           >
                             <Upload aria-hidden="true" size={14} />
@@ -1535,8 +1481,10 @@ function LocalSourceBrowserForProject({
                         </div>
                       ) : (
                         <p className={styles.unsupported} role="note">
-                          Preview tersedia. Impor knowledge hanya menerima .txt
-                          dan Markdown UTF-8.
+                          Preview tersedia. Impor knowledge menerima file teks
+                          UTF-8 dengan ekstensi apa pun. Untuk struktur dan
+                          tautan Obsidian, gunakan catatan Markdown pendamping;
+                          file asal tetap terpisah.
                         </p>
                       )}
                     </>

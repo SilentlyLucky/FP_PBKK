@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Download, FlaskConical, RefreshCw } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import type {
   ControlledEvaluationReport,
   ControlledEvaluationRequest,
@@ -118,35 +118,6 @@ interface ReportSnapshot {
 }
 
 const runEventNames = ["run.status", "run.completed", "run.failed"] as const;
-
-function selectableSourceIds(
-  sources: readonly KnowledgeSourceSummary[],
-  snapshot: GraphSnapshotPayload["activeSnapshot"],
-  arm: ExperimentArm,
-): string[] {
-  const eligible = sources.filter(
-    (source) =>
-      source.eligible &&
-      !source.deleted &&
-      source.permission === "campus_indexer_allowed" &&
-      source.version !== null &&
-      source.versionId !== null &&
-      source.checksum !== null,
-  );
-  if (arm !== "graphrag") return eligible.map((source) => source.id);
-
-  const graphSources = sourceVersionEntries(snapshot?.sourceManifest);
-  return eligible
-    .filter((source) =>
-      graphSources.some(
-        (entry) =>
-          entry.documentId === source.id &&
-          entry.documentVersionId === source.versionId &&
-          entry.checksum === source.checksum,
-      ),
-    )
-    .map((source) => source.id);
-}
 
 function record(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value))
@@ -327,9 +298,19 @@ function ExperimentsWorkspaceForProject({
   activeProjectId: string | null;
 }) {
   const [loading, setLoading] = useState(false);
+  const [projectDataLoading, setProjectDataLoading] = useState(
+    Boolean(activeProjectId),
+  );
+  const [projectDataError, setProjectDataError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [controlledError, setControlledError] = useState<string | null>(null);
+  const [controlledMessage, setControlledMessage] = useState<string | null>(
+    null,
+  );
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConnectionState[]>([]);
   const [codexModels, setCodexModels] = useState<
     NonNullable<ProviderPayload["codexModels"]>
@@ -342,23 +323,20 @@ function ExperimentsWorkspaceForProject({
   const [activeGraphSnapshot, setActiveGraphSnapshot] =
     useState<GraphSnapshotPayload["activeSnapshot"]>(null);
   const [sourceLoadError, setSourceLoadError] = useState<string | null>(null);
-  const [selectedArm, setSelectedArm] = useState<ExperimentArm>("original");
-  const selectedArmRef = useRef<ExperimentArm>("original");
-  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [selectedExperimentId, setSelectedExperimentId] = useState("");
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [promptVersions, setPromptVersions] = useState<PromptVersionSummary[]>(
     [],
   );
-  const [selectedPromptVersionId, setSelectedPromptVersionId] = useState("");
-  const [datasetName, setDatasetName] = useState("Pilot kecil");
-  const [datasetVersion, setDatasetVersion] = useState("v1");
-  const [pilotInput, setPilotInput] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState("");
-  const [reasoningEffort, setReasoningEffort] = useState("");
-  const [setupMode, setSetupMode] = useState<"controlled" | "pilot">(
-    "controlled",
+  const [promptVersionsLoading, setPromptVersionsLoading] = useState(false);
+  const [promptVersionsError, setPromptVersionsError] = useState<string | null>(
+    null,
   );
+  const [selectedPromptVersionId, setSelectedPromptVersionId] = useState("");
+  const [pilotInput, setPilotInput] = useState("");
+  const [pilotModelId, setPilotModelId] = useState("");
+  const [controlledModelId, setControlledModelId] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState("");
   const [starting, setStarting] = useState(false);
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionNote, setDecisionNote] = useState("");
@@ -372,9 +350,7 @@ function ExperimentsWorkspaceForProject({
   const selectedPromptVersion = promptVersions.find(
     (version) => version.id === selectedPromptVersionId,
   );
-  const selectedModel = codexModels.find(
-    (model) => model.id === selectedModelId,
-  );
+  const pilotModel = codexModels.find((model) => model.id === pilotModelId);
   const targetProvider = providers.find(
     (provider) =>
       provider.provider === "codex_app_server" && provider.role === "target",
@@ -412,14 +388,6 @@ function ExperimentsWorkspaceForProject({
         entry.checksum === source.checksum,
     ),
   );
-  const selectableSources =
-    selectedArm === "graphrag" ? graphEligibleSources : eligibleSources;
-  const frozenSelectedSources =
-    selectedArm === "original"
-      ? []
-      : selectableSources.filter((source) =>
-          selectedSourceIds.includes(source.id),
-        );
   const reportMatches = selectedExperiment
     ? reportSnapshot?.key === selectedExperiment.experimentId
       ? reportSnapshot
@@ -448,9 +416,10 @@ function ExperimentsWorkspaceForProject({
   useEffect(() => {
     if (!activeProjectId) {
       const timer = window.setTimeout(() => {
+        setProjectDataLoading(false);
+        setProjectDataError(null);
         setKnowledgeSources([]);
         setActiveGraphSnapshot(null);
-        setSelectedSourceIds([]);
         setSourceLoadError(null);
       }, 0);
       return () => window.clearTimeout(timer);
@@ -490,16 +459,6 @@ function ExperimentsWorkspaceForProject({
         const nextSnapshot = graphPayload.activeSnapshot ?? null;
         setKnowledgeSources(nextSources);
         setActiveGraphSnapshot(nextSnapshot);
-        const available = new Set(
-          selectableSourceIds(
-            nextSources,
-            nextSnapshot,
-            selectedArmRef.current,
-          ),
-        );
-        setSelectedSourceIds((current) =>
-          current.filter((sourceId) => available.has(sourceId)),
-        );
         setSourceLoadError(null);
       })
       .catch((cause: unknown) => {
@@ -511,7 +470,6 @@ function ExperimentsWorkspaceForProject({
         );
         setKnowledgeSources([]);
         setActiveGraphSnapshot(null);
-        setSelectedSourceIds([]);
       });
     return () => controller.abort();
   }, [activeProjectId]);
@@ -525,12 +483,16 @@ function ExperimentsWorkspaceForProject({
         setPrompts([]);
         setExperiments([]);
         setSelectedExperimentId("");
+        setPilotModelId("");
+        setControlledModelId("");
         setPageError(null);
       }, 0);
       return () => window.clearTimeout(timer);
     }
     const projectId = activeProjectId;
     const controller = new AbortController();
+    setProjectDataLoading(true);
+    setProjectDataError(null);
     const loadingTimer = window.setTimeout(() => setLoading(true), 0);
 
     void Promise.all([
@@ -582,19 +544,34 @@ function ExperimentsWorkspaceForProject({
         setPageError(null);
         setProviders(providerPayload.providers ?? []);
         setCodexModels(providerPayload.codexModels ?? []);
-        setPrompts(promptPayload.prompts ?? []);
+        const availablePrompts = promptPayload.prompts ?? [];
+        const availableModels = providerPayload.codexModels ?? [];
+        const configuredTargetModelId = providerPayload.providers?.find(
+          (provider) =>
+            provider.provider === "codex_app_server" &&
+            provider.role === "target",
+        )?.requestedModel;
+        const defaultModelId =
+          availableModels.find((model) => model.id === configuredTargetModelId)
+            ?.id ?? availableModels[0]?.id ?? "";
+        setPrompts(availablePrompts);
         setExperiments(experimentPayload.experiments ?? []);
-        setSelectedPromptId((current) =>
-          (promptPayload.prompts ?? []).some((prompt) => prompt.id === current)
-            ? current
-            : (promptPayload.prompts?.[0]?.id ?? ""),
-        );
-        setSelectedModelId((current) =>
-          (providerPayload.codexModels ?? []).some(
+        setSelectedPromptId((current) => {
+          if (availablePrompts.some((prompt) => prompt.id === current))
+            return current;
+          return (
+            availablePrompts.find((prompt) => prompt.currentVersionId)?.id ??
+            availablePrompts.find((prompt) => prompt.version !== null)?.id ??
+            ""
+          );
+        });
+        setPilotModelId(defaultModelId);
+        setControlledModelId((current) =>
+          availableModels.some(
             (model) => model.id === current,
           )
             ? current
-            : (providerPayload.codexModels?.[0]?.id ?? ""),
+            : defaultModelId,
         );
         setSelectedExperimentId((current) =>
           (experimentPayload.experiments ?? []).some(
@@ -606,6 +583,11 @@ function ExperimentsWorkspaceForProject({
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
+        setProjectDataError(
+          cause instanceof Error
+            ? cause.message
+            : "Data proyek tidak dapat dimuat.",
+        );
         setPageError(
           cause instanceof Error
             ? cause.message
@@ -614,7 +596,10 @@ function ExperimentsWorkspaceForProject({
       })
       .finally(() => {
         window.clearTimeout(loadingTimer);
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setProjectDataLoading(false);
+        }
       });
 
     return () => {
@@ -627,12 +612,16 @@ function ExperimentsWorkspaceForProject({
     if (!activeProjectId || !selectedPromptId) {
       const timer = window.setTimeout(() => {
         setPromptVersions([]);
+        setPromptVersionsLoading(false);
+        setPromptVersionsError(null);
         setSelectedPromptVersionId("");
       }, 0);
       return () => window.clearTimeout(timer);
     }
     const controller = new AbortController();
     const prompt = prompts.find((item) => item.id === selectedPromptId);
+    setPromptVersionsLoading(true);
+    setPromptVersionsError(null);
     void fetch(
       `/api/projects/${activeProjectId}/prompts/${selectedPromptId}/versions`,
       { cache: "no-store", signal: controller.signal },
@@ -655,8 +644,18 @@ function ExperimentsWorkspaceForProject({
             : (prompt?.currentVersionId ?? versions[0]?.id ?? ""),
         );
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setPromptVersions([]);
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted) return;
+        setPromptVersions([]);
+        setSelectedPromptVersionId("");
+        setPromptVersionsError(
+          cause instanceof Error
+            ? cause.message
+            : "Versi prompt tidak dapat dimuat.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPromptVersionsLoading(false);
       });
     return () => controller.abort();
   }, [activeProjectId, prompts, selectedPromptId]);
@@ -783,46 +782,51 @@ function ExperimentsWorkspaceForProject({
     };
   }, [activeProjectId, loadExperiments, selectedExperiment]);
 
-  const selectedModelVerified = Boolean(
+  const pilotModelVerified = Boolean(
     targetProvider?.status === "verified" &&
-    targetProvider.requestedModel === selectedModelId,
+    targetProvider.requestedModel === pilotModelId,
+  );
+  const controlledModelVerified = Boolean(
+    targetProvider?.status === "verified" &&
+    targetProvider.requestedModel === controlledModelId,
   );
   const optimizerReady = optimizerProvider?.status === "verified";
-  const supportedEfforts = selectedModel?.supportedReasoningEfforts ?? [];
-  const selectedEffortIsValid =
-    !reasoningEffort || supportedEfforts.includes(reasoningEffort);
   const reportResult = reportMatches?.result ?? null;
-  const runBlocker = !activeProjectId
-    ? "Pilih proyek sebelum memulai pilot."
-    : !selectedPromptVersion
-      ? "Pilih prompt dan versi yang sudah tersimpan."
-      : !selectedModel
-        ? "Muat model Codex dari Pengaturan terlebih dahulu."
-        : !selectedModelVerified
-          ? "Verifikasi model Codex yang dipilih di Pengaturan."
-          : !optimizerReady
-            ? "Verifikasi koneksi optimizer kampus di Pengaturan."
-            : !selectedEffortIsValid
-              ? "Kedalaman berpikir tidak didukung model yang dipilih."
-              : !datasetName.trim() || !datasetVersion.trim()
-                ? "Isi nama dan versi pilot."
-                : !pilotInput.trim()
-                  ? "Isi satu input uji untuk pilot ini."
-                  : selectedArm === "graphrag" && !activeSnapshotId
-                    ? "Aktifkan snapshot graph yang masih sesuai sebelum memilih GraphRAG."
-                    : selectedArm !== "original" && sourceLoadError
-                      ? sourceLoadError
-                      : selectedArm !== "original" &&
-                          selectedSourceIds.length === 0
-                        ? "Pilih sedikitnya satu sumber yang eligible untuk metode ini."
-                        : selectedArm !== "original" &&
-                            frozenSelectedSources.length !==
-                              selectedSourceIds.length
-                          ? "Pilihan sumber berubah atau tidak cocok dengan snapshot aktif. Muat ulang sumber lalu pilih kembali."
-                          : null;
-  const canStart = !starting && !loading && runBlocker === null;
+  let runBlocker: string | null = null;
+  if (!activeProjectId) runBlocker = "Pilih proyek sebelum membandingkan prompt.";
+  else if (projectDataLoading) runBlocker = "Memuat data proyek…";
+  else if (projectDataError)
+    runBlocker = "Data proyek tidak dapat dimuat. Muat ulang halaman.";
+  else if (promptVersionsLoading) runBlocker = "Memuat prompt baseline…";
+  else if (promptVersionsError)
+    runBlocker = "Versi baseline tidak dapat dimuat. Muat ulang halaman.";
+  else if (!selectedPromptVersion)
+    runBlocker = "Simpan prompt di Workspace untuk dipakai sebagai baseline.";
+  else if (!pilotModel)
+    runBlocker = "Model Codex belum tersedia. Atur koneksi di Pengaturan.";
+  else if (!pilotModelVerified)
+    runBlocker = "Verifikasi model Codex di Pengaturan sebelum membandingkan.";
+  else if (!optimizerReady)
+    runBlocker = "Hubungkan Flowku di Pengaturan sebelum membandingkan.";
+  else if (!pilotInput.trim()) runBlocker = "Masukkan prompt yang mau diuji.";
 
-  async function startPilot(event: React.FormEvent<HTMLFormElement>) {
+  const runBlockerHref = !activeProjectId
+    ? null
+    : projectDataLoading || projectDataError
+      ? null
+    : promptVersionsLoading || promptVersionsError
+      ? null
+      : !selectedPromptVersion
+        ? "/workspace"
+        : !pilotModel || !pilotModelVerified || !optimizerReady
+          ? "/settings"
+          : null;
+  const runBlockerLinkLabel =
+    runBlockerHref === "/workspace" ? "Buka Workspace" : "Buka Pengaturan";
+  const canStart =
+    !starting && !loading && !projectDataLoading && runBlocker === null;
+
+  async function startPromptComparison(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
       !activeProjectId ||
@@ -832,15 +836,10 @@ function ExperimentsWorkspaceForProject({
     )
       return;
     const projectId = activeProjectId;
-    const frozenSources =
-      selectedArm === "original" ? [] : frozenSelectedSources;
     const retrieval: RunRetrievalSelection = {
-      strategy: selectedArm === "graphrag" ? "graph" : "lexical",
-      sourceIds:
-        selectedArm === "original"
-          ? []
-          : frozenSources.map((source) => source.id).sort(),
-      snapshotId: selectedArm === "graphrag" ? activeSnapshotId : null,
+      strategy: "lexical",
+      sourceIds: [],
+      snapshotId: null,
     };
     const caseId = "pilot-case-1";
     setStarting(true);
@@ -854,8 +853,7 @@ function ExperimentsWorkspaceForProject({
           projectId,
           promptVersionId: selectedPromptVersion.id,
           provider: "codex_app_server",
-          requestedModel: selectedModelId,
-          ...(reasoningEffort ? { reasoningEffort } : {}),
+          requestedModel: pilotModelId,
           purpose: "target",
           intent: "prompt_optimization",
           idempotencyKey: crypto.randomUUID(),
@@ -873,13 +871,13 @@ function ExperimentsWorkspaceForProject({
       };
       if (!runResponse.ok || !runPayload.run?.id)
         throw new Error(
-          responseError(runPayload, "Run pilot tidak dapat dibuat."),
+          responseError(runPayload, "Perbandingan tidak dapat dibuat."),
         );
 
       const metadata: ExperimentPilotMetadata = {
-        datasetName: datasetName.trim(),
-        datasetVersion: datasetVersion.trim(),
-        arm: selectedArm,
+        datasetName: "Uji prompt",
+        datasetVersion: "v1",
+        arm: "original",
         split: "development",
         caseId,
         input: pilotInput.trim(),
@@ -888,17 +886,11 @@ function ExperimentsWorkspaceForProject({
         promptName: selectedPrompt.name,
         promptVersion: selectedPromptVersion.version,
         baselinePrompt: selectedPromptVersion.text,
-        requestedModel: selectedModelId,
-        reasoningEffort: reasoningEffort || null,
+        requestedModel: pilotModelId,
+        reasoningEffort: null,
         retrieval,
-        activeSnapshotId: retrieval.snapshotId ?? null,
-        sources: frozenSources.map((source) => ({
-          id: source.id,
-          title: source.displayName,
-          version: source.version!,
-          versionId: source.versionId!,
-          checksum: source.checksum!,
-        })),
+        activeSnapshotId: null,
+        sources: [],
       };
       const markerResponse = await fetch(
         `/api/projects/${projectId}/experiments`,
@@ -915,17 +907,19 @@ function ExperimentsWorkspaceForProject({
       };
       if (!markerResponse.ok || !markerPayload.experiment?.experimentId)
         throw new Error(
-          `Run ${runPayload.run.id} sudah dibuat, tetapi catatan pilot gagal disimpan: ${responseError(markerPayload, "coba muat ulang daftar pilot.")}`,
+          `Run ${runPayload.run.id} sudah dibuat, tetapi hasil perbandingan gagal disimpan: ${responseError(markerPayload, "muat ulang riwayat pengujian.")}`,
         );
 
       await loadExperiments(projectId);
       setSelectedExperimentId(markerPayload.experiment.experimentId);
       setActionMessage(
-        `Pilot satu kasus dibuat. Status run: ${runStatusLabel(runPayload.run.status)}.`,
+        `Perbandingan dimulai. Status: ${runStatusLabel(runPayload.run.status)}.`,
       );
     } catch (cause) {
       setActionError(
-        cause instanceof Error ? cause.message : "Pilot tidak dapat dimulai.",
+        cause instanceof Error
+          ? cause.message
+          : "Perbandingan prompt tidak dapat dimulai.",
       );
     } finally {
       setStarting(false);
@@ -936,8 +930,8 @@ function ExperimentsWorkspaceForProject({
     if (!activeProjectId || starting) return;
     const projectId = activeProjectId;
     setStarting(true);
-    setActionError(null);
-    setActionMessage(null);
+    setControlledError(null);
+    setControlledMessage(null);
     try {
       const metadata: ControlledEvaluationRequest = {
         mode: "controlled_evaluation",
@@ -1008,13 +1002,13 @@ function ExperimentsWorkspaceForProject({
 
       await loadExperiments(projectId);
       setSelectedExperimentId(markerPayload.experiment.experimentId);
-      setActionMessage(
+      setControlledMessage(
         "Evaluasi terkontrol dibuat. Status run: " +
           runStatusLabel(runPayload.run.status) +
           ".",
       );
     } catch (cause) {
-      setActionError(
+      setControlledError(
         cause instanceof Error
           ? cause.message
           : "Evaluasi terkontrol tidak dapat dimulai.",
@@ -1030,8 +1024,8 @@ function ExperimentsWorkspaceForProject({
   ) {
     if (!activeProjectId || !selectedExperiment || decisionBusy) return;
     setDecisionBusy(true);
-    setActionError(null);
-    setActionMessage(null);
+    setDecisionError(null);
+    setDecisionMessage(null);
     try {
       const response = await fetch(
         `/api/projects/${activeProjectId}/experiments/${selectedExperiment.experimentId}/decision`,
@@ -1050,14 +1044,14 @@ function ExperimentsWorkspaceForProject({
           responseError(result, "Keputusan tidak dapat disimpan."),
         );
       await loadExperiments(activeProjectId);
-      setActionMessage(
+      setDecisionMessage(
         "Keputusan tersimpan. Prompt aktif tidak berubah otomatis.",
       );
     } catch (cause) {
-      setActionError(
+      setDecisionError(
         cause instanceof Error
           ? cause.message
-          : "Keputusan pilot tidak dapat disimpan.",
+          : "Keputusan tidak dapat disimpan.",
       );
     } finally {
       setDecisionBusy(false);
@@ -1068,7 +1062,7 @@ function ExperimentsWorkspaceForProject({
     <div className={`stack experiment-workspace ${styles.experiments}`}>
       {!activeProjectId ? (
         <p className="helper" role="status">
-          Pilih proyek dari bilah atas untuk membuat dan membuka evaluasi.
+          Pilih proyek dari bilah atas untuk mulai membandingkan prompt.
         </p>
       ) : null}
       {pageError ? (
@@ -1080,472 +1074,205 @@ function ExperimentsWorkspaceForProject({
         <CardHeader>
           <div className="card-heading-row">
             <div>
-              <CardTitle>
-                {setupMode === "controlled"
-                  ? "Evaluasi batch terkontrol"
-                  : "Pilot berpasangan"}
-              </CardTitle>
+              <CardTitle>Bandingkan prompt</CardTitle>
               <CardDescription>
-                {setupMode === "controlled"
-                  ? "Bandingkan versi baseline dan kandidat yang tersimpan pada kasus development serta holdout dengan konteks yang dibekukan."
-                  : "Pilot satu kasus bersifat eksploratif; bukan holdout atau klaim mutu umum. Penghematan token dan latency saja tidak membuktikan kualitas meningkat."}
+                Masukkan prompt uji. Flowku otomatis memakai prompt tersimpan
+                terbaru sebagai baseline, lalu membandingkannya dengan versi
+                yang diperbaiki.
               </CardDescription>
             </div>
-            <Badge variant="muted">
-              <FlaskConical size={13} aria-hidden="true" />
-              {setupMode === "controlled"
-                ? "Batch · 2–20 kasus"
-                : "Pilot · 1 kasus"}
-            </Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <div
-            className={styles.setupMode}
-            role="radiogroup"
-            aria-label="Jenis evaluasi"
+          <form
+            className={`experiment-form ${styles.promptForm}`}
+            onSubmit={startPromptComparison}
           >
-            <label>
-              <input
-                type="radio"
-                name="experiment-setup-mode"
-                value="controlled"
-                checked={setupMode === "controlled"}
-                onChange={() => setSetupMode("controlled")}
+            <div className={`field ${styles.promptEditor}`}>
+              <label htmlFor="experiment-input">Prompt yang mau diuji</label>
+              <textarea
+                id="experiment-input"
+                className={`input experiment-input ${styles.promptInput}`}
+                maxLength={10_000}
+                value={pilotInput}
+                onChange={(event) => setPilotInput(event.target.value)}
+                placeholder="Tulis pertanyaan atau instruksi yang biasa Anda kirim ke AI."
+                required
+                disabled={starting}
               />
-              <span>
-                <strong>Batch terkontrol</strong>
-                <small>Versi tersimpan, split development dan holdout</small>
+              <p className="helper">
+                Prompt yang sama dikirim ke baseline dan Flowku agar jawabannya
+                bisa dibandingkan langsung.
+              </p>
+            </div>
+
+            <div className={styles.baselineSummary}>
+              <span className={styles.baselineMarker} aria-hidden="true" />
+              <div>
+                <span className={styles.summaryLabel}>Baseline</span>
+                <strong>
+                  {selectedPromptVersion
+                    ? `${selectedPrompt?.name ?? "Prompt aktif"} · v${selectedPromptVersion.version}`
+                    : "Belum ada baseline tersimpan"}
+                </strong>
+              </div>
+              <span className={styles.modelSummary}>
+                {pilotModel?.displayName ?? "Model belum tersedia"}
               </span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="experiment-setup-mode"
-                value="pilot"
-                checked={setupMode === "pilot"}
-                onChange={() => setSetupMode("pilot")}
-              />
-              <span>
-                <strong>Pilot eksploratif</strong>
-                <small>
-                  Satu kasus development, tetap tersedia untuk riwayat lama
-                </small>
+            </div>
+
+            {runBlocker ? (
+              <p className="helper" role="status">
+                {runBlocker}{" "}
+                {runBlockerHref ? (
+                  <Link className="knowledge-link" href={runBlockerHref}>
+                    {runBlockerLinkLabel}
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
+            {actionError ? (
+              <p className="error-message" role="alert">
+                {actionError}
+              </p>
+            ) : null}
+            {actionMessage ? (
+              <p className="success-message" role="status">
+                {actionMessage}
+              </p>
+            ) : null}
+
+            <div className={styles.promptActions}>
+              <span className="helper">
+                Satu klik menjalankan kedua jawaban dengan model yang sama.
               </span>
-            </label>
-          </div>
-          {setupMode === "controlled" ? (
+              <Button type="submit" disabled={!canStart}>
+                {starting
+                  ? "Menyiapkan perbandingan…"
+                  : "Bandingkan dengan Flowku"}
+              </Button>
+            </div>
+          </form>
+
+          <details className={styles.advancedSetup}>
+            <summary>Evaluasi batch (lanjutan)</summary>
+            <p className="helper">
+              Untuk membandingkan beberapa versi prompt pada dataset, holdout,
+              dan metode retrieval yang dibekukan.
+            </p>
             <ControlledEvaluationSetup
               projectId={activeProjectId}
               prompts={prompts}
               models={codexModels}
-              selectedModelId={selectedModelId}
+              selectedModelId={controlledModelId}
               onModelChange={(value) => {
-                setSelectedModelId(value);
+                setControlledModelId(value);
                 setReasoningEffort("");
               }}
               reasoningEffort={reasoningEffort}
               onReasoningEffortChange={setReasoningEffort}
-              modelVerified={selectedModelVerified}
+              modelVerified={controlledModelVerified}
               sources={eligibleSources}
               graphSources={graphEligibleSources}
               graphSnapshotId={activeSnapshotId}
               sourceLoadError={sourceLoadError}
               starting={starting}
-              error={actionError}
-              message={actionMessage}
+              error={controlledError}
+              message={controlledMessage}
               onStart={(draft) => void startControlledEvaluation(draft)}
             />
-          ) : (
-            <form className="experiment-form" onSubmit={startPilot}>
-              <div className="experiment-form-grid">
-                <div className="field">
-                  <label htmlFor="experiment-arm">Metode A/R/G</label>
-                  <select
-                    id="experiment-arm"
-                    className="select"
-                    value={selectedArm}
-                    onChange={(event) => {
-                      const nextArm = event.target.value as ExperimentArm;
-                      selectedArmRef.current = nextArm;
-                      setSelectedArm(nextArm);
-                      const available = new Set(
-                        selectableSourceIds(
-                          knowledgeSources,
-                          activeGraphSnapshot,
-                          nextArm,
-                        ),
-                      );
-                      setSelectedSourceIds((current) =>
-                        current.filter((sourceId) => available.has(sourceId)),
-                      );
-                    }}
-                    disabled={starting}
-                  >
-                    <option value="original">Original · tanpa sumber</option>
-                    <option value="rag">RAG · retrieval leksikal</option>
-                    <option value="graphrag">GraphRAG · retrieval graph</option>
-                  </select>
-                  <p className="helper">
-                    Satu run membandingkan prompt baseline dan kandidat dengan
-                    metode, input, model, dan effort yang sama.
-                  </p>
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-dataset-name">Nama pilot</label>
-                  <input
-                    id="experiment-dataset-name"
-                    className="input"
-                    maxLength={120}
-                    value={datasetName}
-                    onChange={(event) => setDatasetName(event.target.value)}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-dataset-version">
-                    Versi pilot
-                  </label>
-                  <input
-                    id="experiment-dataset-version"
-                    className="input"
-                    maxLength={80}
-                    value={datasetVersion}
-                    onChange={(event) => setDatasetVersion(event.target.value)}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-prompt">Prompt baseline</label>
-                  <select
-                    id="experiment-prompt"
-                    className="select"
-                    value={selectedPromptId}
-                    onChange={(event) => {
-                      setSelectedPromptId(event.target.value);
-                      setSelectedPromptVersionId("");
-                    }}
-                    disabled={!prompts.length || starting}
-                    required
-                  >
-                    {prompts.length ? null : (
-                      <option value="">
-                        Simpan prompt di Workspace terlebih dahulu
-                      </option>
-                    )}
-                    {prompts.map((prompt) => (
-                      <option key={prompt.id} value={prompt.id}>
-                        {prompt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-prompt-version">
-                    Versi prompt
-                  </label>
-                  <select
-                    id="experiment-prompt-version"
-                    className="select"
-                    value={selectedPromptVersionId}
-                    onChange={(event) =>
-                      setSelectedPromptVersionId(event.target.value)
-                    }
-                    disabled={!promptVersions.length || starting}
-                    required
-                  >
-                    {promptVersions.map((version) => (
-                      <option key={version.id} value={version.id}>
-                        v{version.version}
-                        {version.id === selectedPrompt?.currentVersionId
-                          ? " · aktif"
-                          : " · riwayat"}
-                      </option>
-                    ))}
-                    {!promptVersions.length ? (
-                      <option value="">Riwayat prompt belum tersedia</option>
-                    ) : null}
-                  </select>
-                  <p className="helper">
-                    Versi lama hanya dipakai untuk pilot ini. Prompt aktif dan
-                    riwayat tidak berubah.
-                  </p>
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-model">Model Codex</label>
-                  <select
-                    id="experiment-model"
-                    className="select"
-                    value={selectedModelId}
-                    onChange={(event) => {
-                      setSelectedModelId(event.target.value);
-                      setReasoningEffort("");
-                    }}
-                    disabled={!codexModels.length || starting}
-                    required
-                  >
-                    {codexModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.displayName}
-                      </option>
-                    ))}
-                    {!codexModels.length ? (
-                      <option value="">Login Codex untuk memuat model</option>
-                    ) : null}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="experiment-reasoning-effort">
-                    Kedalaman berpikir
-                  </label>
-                  <select
-                    id="experiment-reasoning-effort"
-                    className="select"
-                    value={reasoningEffort}
-                    onChange={(event) => setReasoningEffort(event.target.value)}
-                    disabled={!selectedModel || starting}
-                  >
-                    <option value="">Bawaan model</option>
-                    {supportedEfforts.map((effort) => (
-                      <option key={effort} value={effort}>
-                        {effort}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="helper">
-                    Pilihan mengikuti kemampuan model yang dimuat dari Codex.
-                  </p>
-                </div>
-              </div>
-
-              {selectedArm !== "original" ? (
-                <fieldset className="experiment-source-selection">
-                  <legend>Sumber yang dibekukan</legend>
-                  {sourceLoadError ? (
-                    <p className="error-message" role="alert">
-                      {sourceLoadError}
-                    </p>
-                  ) : selectableSources.length ? (
-                    <div className="experiment-source-list">
-                      {selectableSources.map((source) => (
-                        <label key={source.id}>
-                          <input
-                            type="checkbox"
-                            checked={selectedSourceIds.includes(source.id)}
-                            disabled={starting}
-                            onChange={(event) =>
-                              setSelectedSourceIds((current) =>
-                                event.target.checked
-                                  ? [...new Set([...current, source.id])]
-                                  : current.filter((id) => id !== source.id),
-                              )
-                            }
-                          />
-                          <span>
-                            <strong>{source.displayName}</strong>
-                            <small>
-                              v{source.version} · checksum{" "}
-                              {source.checksum?.slice(0, 12)}
-                              {selectedArm === "graphrag"
-                                ? " · ada pada snapshot aktif"
-                                : " · retrieval leksikal"}
-                            </small>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="helper">
-                      {selectedArm === "graphrag" && !activeSnapshotId
-                        ? "Belum ada snapshot graph aktif yang masih sesuai."
-                        : "Belum ada sumber eligible untuk metode ini."}
-                    </p>
-                  )}
-                  <p className="helper">
-                    Hanya sumber dengan izin Campus dan versi aktif yang dapat
-                    dipilih. Versi, checksum, dan snapshot disimpan bersama
-                    hasil.
-                  </p>
-                </fieldset>
-              ) : null}
-
-              <div
-                className="experiment-context-summary"
-                aria-label="Konteks pilot"
-              >
-                <div>
-                  <span className="panel-label">Konteks dibekukan</span>
-                  <strong>{armLabels[selectedArm]}</strong>
-                  <span className="helper">
-                    {selectedArm === "original"
-                      ? "Tanpa sumber knowledge dan tanpa snapshot. Input, model, serta prompt tetap dibekukan untuk baseline dan kandidat."
-                      : selectedArm === "rag"
-                        ? `${frozenSelectedSources.length} sumber dipilih dengan retrieval leksikal. Input, versi sumber, model, dan prompt tetap dibekukan untuk baseline serta kandidat.`
-                        : `${frozenSelectedSources.length} sumber dipilih pada snapshot ${activeSnapshotId ?? "belum tersedia"}. Jika retrieval graph jatuh ke fallback, hasil tidak eligible sebagai GraphRAG.`}
-                  </span>
-                  {frozenSelectedSources.length ? (
-                    <span className="helper">
-                      {frozenSelectedSources
-                        .map(
-                          (source) =>
-                            `${source.displayName} v${source.version}`,
-                        )
-                        .join(" · ")}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="field">
-                <label htmlFor="experiment-input">Satu input uji</label>
-                <textarea
-                  id="experiment-input"
-                  className="input experiment-input"
-                  maxLength={10_000}
-                  value={pilotInput}
-                  onChange={(event) => setPilotInput(event.target.value)}
-                  placeholder="Tulis satu input yang sama untuk jawaban baseline dan kandidat."
-                  required
-                />
-                <p className="helper">
-                  Data uji tidak dikirim sampai Anda memilih Run. Hasil akan
-                  menampilkan jawaban nyata dan angka pemakaian dari run.
-                </p>
-              </div>
-
-              {!selectedPrompt && activeProjectId ? (
-                <p className="helper" role="status">
-                  Belum ada prompt tersimpan. Buat dan simpan prompt di{" "}
-                  <Link className="knowledge-link" href="/workspace">
-                    Workspace
-                  </Link>
-                  .
-                </p>
-              ) : null}
-              {runBlocker ? (
-                <p className="helper" role="status">
-                  {runBlocker}{" "}
-                  {activeProjectId ? (
-                    <Link className="knowledge-link" href="/settings">
-                      Buka Pengaturan
-                    </Link>
-                  ) : null}
-                </p>
-              ) : null}
-              {actionError ? (
-                <p className="error-message" role="alert">
-                  {actionError}
-                </p>
-              ) : null}
-              {actionMessage ? (
-                <p className="success-message" role="status">
-                  {actionMessage}
-                </p>
-              ) : null}
-              <div className="experiment-run-actions">
-                <Button type="submit" disabled={!canStart}>
-                  {starting ? "Menyiapkan pilot…" : "Run"}
-                </Button>
-                {selectedPromptVersion ? (
-                  <span className="helper">
-                    {selectedPrompt?.name} · v{selectedPromptVersion.version} ·{" "}
-                    {selectedModel?.displayName ?? "Model belum dipilih"}
-                    {reasoningEffort
-                      ? ` · ${reasoningEffort}`
-                      : " · bawaan model"}
-                  </span>
-                ) : null}
-              </div>
-            </form>
-          )}
+          </details>
         </CardContent>
       </Card>
 
       <Card className={styles.reportCard}>
         <CardHeader>
-          <div className="card-heading-row">
-            <div>
-              <CardTitle>
-                {selectedExperiment?.mode === "controlled_evaluation"
-                  ? "Laporan evaluasi terkontrol"
-                  : "Laporan pilot"}
-              </CardTitle>
-              <CardDescription>
-                Riwayat dan bukti berasal dari event run tersimpan. Token dan
-                latency menjelaskan pemakaian; keduanya tidak membuktikan
-                peningkatan kualitas.
-              </CardDescription>
-            </div>
-            <div className="form-row">
-              <label className="field experiment-select-label">
-                <span>Pilih eksperimen</span>
-                <select
-                  className="select"
-                  aria-label="Pilih eksperimen"
-                  value={selectedExperimentId}
-                  onChange={(event) =>
-                    setSelectedExperimentId(event.target.value)
-                  }
-                  disabled={!experiments.length}
-                >
-                  {experiments.map((experiment) => (
-                    <option
-                      key={experiment.experimentId}
-                      value={experiment.experimentId}
-                    >
-                      {experimentHistoryLabel(experiment)} ·{" "}
-                      {new Date(experiment.createdAt).toLocaleString("id-ID")}
-                    </option>
-                  ))}
-                  {!experiments.length ? (
-                    <option value="">Belum ada eksperimen</option>
-                  ) : null}
-                </select>
-              </label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!activeProjectId || loading}
-                onClick={() => {
-                  if (!activeProjectId) return;
-                  setLoading(true);
-                  void loadExperiments(activeProjectId)
-                    .catch((cause: unknown) =>
-                      setPageError(
-                        cause instanceof Error
-                          ? cause.message
-                          : "Riwayat eksperimen tidak dapat dimuat.",
-                      ),
-                    )
-                    .finally(() => setLoading(false));
-                }}
-                aria-label="Muat ulang riwayat eksperimen"
-              >
-                <RefreshCw size={15} aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
+          <CardTitle>
+            {selectedExperiment?.mode === "controlled_evaluation"
+              ? "Hasil evaluasi batch"
+              : "Hasil perbandingan"}
+          </CardTitle>
+          <CardDescription>
+            Baca kedua jawaban berdampingan. Token dan waktu hanya menunjukkan
+            pemakaian, bukan kualitas jawaban.
+          </CardDescription>
         </CardHeader>
         <CardContent className="experiment-report-content">
+          {experiments.length ? (
+            <details className={styles.historyDisclosure}>
+              <summary>Riwayat pengujian ({experiments.length})</summary>
+              <div className={styles.historyControls}>
+                <label className="field">
+                  <span>Pilih hasil sebelumnya</span>
+                  <select
+                    className="select"
+                    aria-label="Pilih eksperimen"
+                    value={selectedExperimentId}
+                    onChange={(event) =>
+                      setSelectedExperimentId(event.target.value)
+                    }
+                  >
+                    {experiments.map((experiment) => (
+                      <option
+                        key={experiment.experimentId}
+                        value={experiment.experimentId}
+                      >
+                        {experimentHistoryLabel(experiment)} ·{" "}
+                        {new Date(experiment.createdAt).toLocaleString("id-ID")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!activeProjectId || loading}
+                  onClick={() => {
+                    if (!activeProjectId) return;
+                    setLoading(true);
+                    void loadExperiments(activeProjectId)
+                      .catch((cause: unknown) =>
+                        setPageError(
+                          cause instanceof Error
+                            ? cause.message
+                            : "Riwayat pengujian tidak dapat dimuat.",
+                        ),
+                      )
+                      .finally(() => setLoading(false));
+                  }}
+                  aria-label="Muat ulang riwayat pengujian"
+                >
+                  <RefreshCw size={15} aria-hidden="true" />
+                </Button>
+              </div>
+            </details>
+          ) : null}
           {selectedExperiment ? (
             selectedExperiment.mode === "controlled_evaluation" ? (
-              <ControlledEvaluationResults
-                key={selectedExperiment.experimentId}
-                experiment={selectedExperiment}
-                report={reportMatches?.controlledReport ?? null}
-                status={reportMatches?.status ?? selectedExperiment.status}
-                connection={reportMatches?.connection ?? "connecting"}
-                error={reportMatches?.error ?? selectedExperiment.errorSummary}
-                decisionError={actionError}
-                decisionBusy={decisionBusy}
-                onDecision={(decision, note) =>
-                  void saveDecision(decision, note)
-                }
-              />
+              <>
+                {decisionMessage ? (
+                  <p className="success-message" role="status">
+                    {decisionMessage}
+                  </p>
+                ) : null}
+                <ControlledEvaluationResults
+                  key={selectedExperiment.experimentId}
+                  experiment={selectedExperiment}
+                  report={reportMatches?.controlledReport ?? null}
+                  status={reportMatches?.status ?? selectedExperiment.status}
+                  connection={reportMatches?.connection ?? "connecting"}
+                  error={reportMatches?.error ?? selectedExperiment.errorSummary}
+                  decisionError={decisionError}
+                  decisionBusy={decisionBusy}
+                  onDecision={(decision, note) =>
+                    void saveDecision(decision, note)
+                  }
+                />
+              </>
             ) : (
               <>
-                <div className="experiment-report-meta">
+                <div className={styles.reportStatus}>
                   <Badge
                     variant={statusVariant(
                       reportMatches?.status ?? selectedExperiment.status,
@@ -1556,64 +1283,20 @@ function ExperimentsWorkspaceForProject({
                     )}
                   </Badge>
                   <span className="helper">
-                    Pilot {selectedExperiment.metadata.datasetName} · v
-                    {selectedExperiment.metadata.datasetVersion}
-                  </span>
-                  <Badge variant="muted">
-                    {armLabels[selectedExperiment.metadata.arm]} · development
-                  </Badge>
-                  <Badge
-                    variant={
-                      selectedExperiment.evidenceEligible
-                        ? "success"
-                        : "warning"
-                    }
-                  >
-                    {selectedExperiment.evidenceEligible
-                      ? "Bukti lengkap dan cocok"
-                      : "Eksploratif · bukti belum terverifikasi"}
-                  </Badge>
-                  <span className="helper mono">
-                    Run {selectedExperiment.runId}
+                    {new Date(selectedExperiment.createdAt).toLocaleString(
+                      "id-ID",
+                    )}
                   </span>
                 </div>
-                <dl className="experiment-facts">
-                  <div>
-                    <dt>Prompt</dt>
-                    <dd>
-                      {selectedExperiment.metadata.promptName} · v
-                      {selectedExperiment.metadata.promptVersion}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Model</dt>
-                    <dd>{selectedExperiment.metadata.requestedModel}</dd>
-                  </div>
-                  <div>
-                    <dt>Kedalaman</dt>
-                    <dd>
-                      {selectedExperiment.metadata.reasoningEffort ??
-                        "Bawaan model"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Konteks</dt>
-                    <dd>
-                      {selectedExperiment.metadata.arm === "original"
-                        ? "Tanpa sumber knowledge"
-                        : `${selectedExperiment.metadata.sources.length} sumber · ${selectedExperiment.metadata.arm === "graphrag" ? `snapshot ${selectedExperiment.metadata.activeSnapshotId ?? "tidak dipilih"}` : "retrieval leksikal"}`}
-                    </dd>
-                  </div>
-                  <div className="experiment-fact-input">
-                    <dt>Input yang dibekukan</dt>
-                    <dd>{selectedExperiment.metadata.input}</dd>
-                  </div>
-                </dl>
+                <div className={styles.testPrompt}>
+                  <span className={styles.summaryLabel}>Prompt yang diuji</span>
+                  <p>{selectedExperiment.metadata.input}</p>
+                </div>
 
                 {reportMatches?.connection === "connecting" ||
                 reportMatches?.connection === "reconnecting" ? (
                   <p className="helper" role="status">
-                    Mengambil hasil dari riwayat run…
+                    Menunggu jawaban perbandingan…
                   </p>
                 ) : null}
                 {reportMatches?.error ? (
@@ -1632,56 +1315,85 @@ function ExperimentsWorkspaceForProject({
                         prompt={reportResult.baseline.prompt}
                         answer={reportResult.baseline.answers[0]}
                       />
-                      {reportResult.candidates.map((candidate) => (
-                        <AnswerColumn
-                          key={candidate.id}
-                          title="Kandidat"
-                          prompt={candidate.prompt}
-                          answer={candidate.answers[0]}
-                        />
-                      ))}
+                      {reportResult.candidates.length ? (
+                        reportResult.candidates.map((candidate) => (
+                          <AnswerColumn
+                            key={candidate.id}
+                            title="Dengan Flowku"
+                            prompt={candidate.prompt}
+                            answer={candidate.answers[0]}
+                          />
+                        ))
+                      ) : (
+                        <article
+                          className={`experiment-answer-column ${styles.flowkuAnswer} ${styles.noFlowkuCandidate}`}
+                        >
+                          <h3>Dengan Flowku</h3>
+                          <p>
+                            {reportResult.status === "no_change_recommended"
+                              ? "Flowku tidak menyarankan perubahan untuk prompt ini."
+                              : "Flowku belum menghasilkan jawaban pembanding."}
+                          </p>
+                        </article>
+                      )}
                     </section>
-                    <div className="experiment-metrics-grid">
-                      <MetricCard
-                        title="Baseline"
-                        usage={reportResult.baseline.usage}
-                        latency={reportResult.baseline.latencyMs}
-                      />
-                      {reportResult.candidates.map((candidate) => (
-                        <MetricCard
-                          key={candidate.id}
-                          title="Kandidat"
-                          usage={candidate.usage}
-                          latency={candidate.latencyMs}
-                        />
-                      ))}
+                    <p className="helper">
+                      Angka token dan waktu membantu melihat pemakaian. Nilai
+                      kualitas jawaban dari isinya.
+                    </p>
+                    <details className={styles.reportDetails}>
+                      <summary>Detail hasil dan ekspor</summary>
+                      <dl className="experiment-facts">
+                        <div>
+                          <dt>Prompt baseline</dt>
+                          <dd>
+                            {selectedExperiment.metadata.promptName} · v
+                            {selectedExperiment.metadata.promptVersion}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Model</dt>
+                          <dd>{selectedExperiment.metadata.requestedModel}</dd>
+                        </div>
+                        <div>
+                          <dt>Konteks</dt>
+                          <dd>
+                            {selectedExperiment.metadata.arm === "original"
+                              ? "Tanpa sumber knowledge"
+                              : `${selectedExperiment.metadata.sources.length} sumber · ${armLabels[selectedExperiment.metadata.arm]}`}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>ID run</dt>
+                          <dd className="mono">{selectedExperiment.runId}</dd>
+                        </div>
+                      </dl>
                       <div className="experiment-metric-card">
-                        <strong>Biaya perbaikan</strong>
+                        <strong>Biaya perbaikan Flowku</strong>
                         <span>
                           {formatMetric(reportResult.optimizer.usage.total)} ·{" "}
                           {formatDuration(reportResult.optimizationOverheadMs)}
                         </span>
                         <span className="helper">
-                          Terpisah dari token dan waktu jawaban Codex; ini
-                          metrik efisiensi, bukan ukuran peningkatan kualitas.
+                          Terpisah dari pemakaian dan waktu jawaban model.
                         </span>
                       </div>
-                    </div>
-                    <div className="experiment-report-actions">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() =>
-                          downloadReport(selectedExperiment, reportResult)
-                        }
-                      >
-                        <Download size={15} aria-hidden="true" /> Ekspor laporan
-                        JSON
-                      </Button>
-                      <Link className="workspace-result-link" href="/runs">
-                        Buka riwayat run
-                      </Link>
-                    </div>
+                      <div className="experiment-report-actions">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            downloadReport(selectedExperiment, reportResult)
+                          }
+                        >
+                          <Download size={15} aria-hidden="true" /> Ekspor
+                          laporan JSON
+                        </Button>
+                        <Link className="workspace-result-link" href="/runs">
+                          Buka riwayat run
+                        </Link>
+                      </div>
+                    </details>
                   </>
                 ) : reportMatches?.status === "succeeded" ? (
                   <p className="helper" role="status">
@@ -1692,81 +1404,90 @@ function ExperimentsWorkspaceForProject({
                     <div>
                       <p>Jawaban belum tersedia.</p>
                       <p className="helper">
-                        Laporan muncul setelah run menyimpan jawaban baseline
-                        dan kandidat.
+                        Hasil akan muncul di sini setelah kedua jawaban selesai.
                       </p>
                     </div>
                   </div>
                 )}
 
-                <section
-                  className="experiment-decision"
-                  aria-labelledby="experiment-decision-title"
-                >
-                  <div>
-                    <h3 id="experiment-decision-title">Keputusan Anda</h3>
-                    <p className="helper">
-                      Keputusan hanya dicatat pada laporan. Untuk mengubah
-                      prompt, pilih Terapkan secara terpisah di Workspace.
-                    </p>
-                  </div>
-                  {selectedExperiment.decision ? (
-                    <Badge
-                      variant={
-                        selectedExperiment.decision === "accepted" &&
-                        !selectedExperiment.decisionVerified
-                          ? "warning"
-                          : "success"
-                      }
-                    >
-                      {selectedExperiment.decision === "accepted"
-                        ? selectedExperiment.decisionVerified
-                          ? "Diterima · bukti terverifikasi"
-                          : "Diterima · bukti belum terverifikasi"
-                        : selectedExperiment.decision === "rejected"
-                          ? "Ditolak"
-                          : "Belum meyakinkan"}
-                    </Badge>
-                  ) : null}
-                  <label className="field">
-                    <span>Catatan keputusan (opsional)</span>
-                    <input
-                      className="input"
-                      maxLength={500}
-                      value={decisionNote}
-                      onChange={(event) => setDecisionNote(event.target.value)}
-                      placeholder="Catat alasan singkat"
-                    />
-                  </label>
-                  <div className="experiment-decision-actions">
-                    {(
-                      [
-                        ["accepted", "Terima kandidat"],
-                        ["rejected", "Tolak kandidat"],
-                        ["inconclusive", "Belum meyakinkan"],
-                      ] as const
-                    ).map(([decision, label]) => (
-                      <Button
-                        key={decision}
-                        type="button"
+                <details className={styles.decisionDisclosure}>
+                  <summary>Catat keputusan</summary>
+                  <section className="experiment-decision">
+                    <div>
+                      <h3>Keputusan Anda</h3>
+                      <p className="helper">
+                        Keputusan hanya dicatat. Untuk mengubah prompt, pilih
+                        Terapkan secara terpisah di Workspace.
+                      </p>
+                    </div>
+                    {selectedExperiment.decision ? (
+                      <Badge
                         variant={
-                          decision === "accepted" ? "secondary" : "ghost"
+                          selectedExperiment.decision === "accepted" &&
+                          !selectedExperiment.decisionVerified
+                            ? "warning"
+                            : "success"
                         }
-                        disabled={
-                          decisionBusy ||
-                          (decision === "accepted" &&
-                            !selectedExperiment.evidenceEligible) ||
-                          ["queued", "running", "cancel_requested"].includes(
-                            reportMatches?.status ?? selectedExperiment.status,
-                          )
-                        }
-                        onClick={() => void saveDecision(decision)}
                       >
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-                </section>
+                        {selectedExperiment.decision === "accepted"
+                          ? selectedExperiment.decisionVerified
+                            ? "Diterima · bukti terverifikasi"
+                            : "Diterima · bukti belum terverifikasi"
+                          : selectedExperiment.decision === "rejected"
+                            ? "Ditolak"
+                            : "Belum meyakinkan"}
+                      </Badge>
+                    ) : null}
+                    <label className="field">
+                      <span>Catatan (opsional)</span>
+                      <input
+                        className="input"
+                        maxLength={500}
+                        value={decisionNote}
+                        onChange={(event) => setDecisionNote(event.target.value)}
+                        placeholder="Catat alasan singkat"
+                      />
+                    </label>
+                    {decisionError ? (
+                      <p className="error-message" role="alert">
+                        {decisionError}
+                      </p>
+                    ) : null}
+                    {decisionMessage ? (
+                      <p className="success-message" role="status">
+                        {decisionMessage}
+                      </p>
+                    ) : null}
+                    <div className="experiment-decision-actions">
+                      {(
+                        [
+                          ["accepted", "Terima Flowku"],
+                          ["rejected", "Tolak"],
+                          ["inconclusive", "Belum meyakinkan"],
+                        ] as const
+                      ).map(([decision, label]) => (
+                        <Button
+                          key={decision}
+                          type="button"
+                          variant={
+                            decision === "accepted" ? "secondary" : "ghost"
+                          }
+                          disabled={
+                            decisionBusy ||
+                            (decision === "accepted" &&
+                              !selectedExperiment.evidenceEligible) ||
+                            ["queued", "running", "cancel_requested"].includes(
+                              reportMatches?.status ?? selectedExperiment.status,
+                            )
+                          }
+                          onClick={() => void saveDecision(decision)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+                  </section>
+                </details>
               </>
             )
           ) : (
@@ -1778,8 +1499,8 @@ function ExperimentsWorkspaceForProject({
                     : "Belum ada laporan eksperimen."}
                 </p>
                 <p className="helper">
-                  Mulai evaluasi terkontrol atau pilot eksploratif untuk
-                  mencatat perbandingan baseline dan kandidat.
+                  Masukkan prompt di atas untuk melihat jawaban baseline dan
+                  jawaban dengan Flowku berdampingan.
                 </p>
               </div>
             </div>
@@ -1802,10 +1523,12 @@ function AnswerColumn({
   const verification = answer ? verificationStatus(answer) : null;
   const verificationEvidence = answer?.verificationEvidence;
   return (
-    <article className="experiment-answer-column">
+    <article
+      className={`experiment-answer-column ${title === "Dengan Flowku" ? styles.flowkuAnswer : styles.baselineAnswer}`}
+    >
       <h3>{title}</h3>
       <details>
-        <summary>Prompt yang diuji</summary>
+        <summary>Instruksi yang digunakan</summary>
         <pre>{prompt}</pre>
       </details>
       <p className="panel-label">Jawaban</p>
@@ -1830,30 +1553,7 @@ function AnswerColumn({
         </details>
       ) : answer?.verification ? (
         <p className="helper">Bukti pemeriksaan belum tersedia.</p>
-      ) : (
-        <p className="helper">Pemeriksaan deterministik tidak dikonfigurasi.</p>
-      )}
+      ) : null}
     </article>
-  );
-}
-
-function MetricCard({
-  title,
-  usage,
-  latency,
-}: {
-  title: string;
-  usage: OptimizationUsage;
-  latency: number | null;
-}) {
-  return (
-    <div className="experiment-metric-card">
-      <strong>{title}</strong>
-      <span>{formatMetric(usage.total)}</span>
-      <span>{formatDuration(latency)}</span>
-      <span className="helper">
-        Input {formatMetric(usage.input)} · output {formatMetric(usage.output)}
-      </span>
-    </div>
   );
 }

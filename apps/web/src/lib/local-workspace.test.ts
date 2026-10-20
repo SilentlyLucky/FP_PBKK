@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { SourcePermission } from "@promptlab/db";
 import {
   createLocalWorkspaceService,
   type LocalWorkspaceEvaluationCommandConfiguration,
@@ -1002,7 +1001,7 @@ describe("local workspace route guards and grants", () => {
 });
 
 describe("local file source import", () => {
-  it("requires explicit source permission and a configured local database", async () => {
+  it("keeps the local read grant and requires a configured local database", async () => {
     const persistSource = vi.fn(async () => ({
       sourceId: "source-id",
       version: 1,
@@ -1018,21 +1017,10 @@ describe("local file source import", () => {
     const grantId = await approvedGrant(handlers);
     const target = PROJECT_PATH + "/grants/" + grantId + "/import";
 
-    const missingPolicy = await handlers.import(
-      makeRequest(target, {
-        method: "POST",
-        body: { path: "notes/guide.md" },
-      }),
-      PROJECT_A,
-      grantId,
-    );
-    expect(missingPolicy.status).toBe(400);
-    expect(persistSource).not.toHaveBeenCalled();
-
     const noDatabase = await handlers.import(
       makeRequest(target, {
         method: "POST",
-        body: { path: "notes/guide.md", permission: "local_only" },
+        body: { path: "notes/guide.md" },
       }),
       PROJECT_A,
       grantId,
@@ -1041,19 +1029,15 @@ describe("local file source import", () => {
     expect(persistSource).not.toHaveBeenCalled();
   });
 
-  it("passes the chosen sharing policy and a relative-path text file to ingestion", async () => {
+  it("imports text files with any extension as indexing-ready sources", async () => {
     const persistSource = vi.fn(
-      async (
-        _projectId: string,
-        file: LocalWorkspaceReadResult,
-        permission: SourcePermission,
-      ) => ({
+      async (_projectId: string, file: LocalWorkspaceReadResult) => ({
         sourceId: "source-id",
         version: 2,
         checksum: "b".repeat(64),
         chunkCount: 1,
         updated: true,
-        permission,
+        permission: "campus_indexer_allowed" as const,
       }),
     );
     const handlers = handlersFor(await makeRuntime(), {
@@ -1068,7 +1052,6 @@ describe("local file source import", () => {
         method: "POST",
         body: {
           path: "notes/guide.md",
-          permission: "campus_indexer_allowed",
         },
       }),
       PROJECT_A,
@@ -1084,20 +1067,23 @@ describe("local file source import", () => {
     expect(persistSource).toHaveBeenCalledWith(
       PROJECT_A,
       expect.objectContaining({ path: "notes/guide.md" }),
-      "campus_indexer_allowed",
     );
     expect(JSON.stringify(importedPayload)).not.toContain(rootA);
 
-    const unsupported = await handlers.import(
+    const importedTypeScript = await handlers.import(
       makeRequest(target, {
         method: "POST",
-        body: { path: "notes/tool.ts", permission: "local_only" },
+        body: { path: "notes/tool.ts" },
       }),
       PROJECT_A,
       grantId,
     );
-    expect(unsupported.status).toBe(400);
-    expect(persistSource).toHaveBeenCalledTimes(1);
+    expect(importedTypeScript.status).toBe(201);
+    expect(persistSource).toHaveBeenCalledTimes(2);
+    expect(persistSource).toHaveBeenLastCalledWith(
+      PROJECT_A,
+      expect.objectContaining({ path: "notes/tool.ts" }),
+    );
   });
 
   it("stores only relative provenance and the imported content hash", () => {
@@ -1112,14 +1098,13 @@ describe("local file source import", () => {
         contentHash: createHash("sha256").update(guideContent).digest("hex"),
         rawBytes: new TextEncoder().encode(guideContent),
       },
-      "local_only",
       new Date("2026-10-16T00:00:00.000Z"),
     );
     expect(input).toMatchObject({
       projectId: PROJECT_A,
       displayName: "guide.md",
       sourceKind: "upload",
-      permission: "local_only",
+      permission: "campus_indexer_allowed",
       sourceRef: null,
       sourceMetadata: {
         origin: "local_workspace",
@@ -1133,7 +1118,7 @@ describe("local file source import", () => {
       rawByteSize: Buffer.byteLength(guideContent),
     });
     expect(JSON.stringify(input.sourceMetadata)).not.toContain(rootA);
-    expect(() =>
+    expect(
       buildLocalWorkspaceKnowledgeSourceInput(
         PROJECT_A,
         {
@@ -1144,9 +1129,8 @@ describe("local file source import", () => {
           contentHash: createHash("sha256").update("x").digest("hex"),
           rawBytes: new TextEncoder().encode("x"),
         },
-        "local_only",
         new Date(),
       ),
-    ).toThrow("UNSUPPORTED_SOURCE_FILE");
+    ).toMatchObject({ displayName: "tool.ts", contentType: "text/plain" });
   });
 });

@@ -87,6 +87,10 @@ async function installLocalReviewFixtures(
   let grantCounter = 0;
   let patchCounter = 0;
   let latestContent = originalContent;
+  const conversationsByProject = new Map<
+    string,
+    Array<Record<string, unknown>>
+  >();
 
   await page.addInitScript((activeProjectId) => {
     window.localStorage.setItem("promptlab.activeProjectId", activeProjectId);
@@ -114,6 +118,44 @@ async function installLocalReviewFixtures(
     if (projectMatch) {
       const projectId = projectMatch[1]!;
       const suffix = projectMatch[2] ?? "";
+
+      if (suffix === "workspace/conversations" && method === "GET") {
+        return json(route, {
+          conversations: conversationsByProject.get(projectId) ?? [],
+        });
+      }
+      if (suffix === "workspace/conversations" && method === "PUT") {
+        const body = request.postDataJSON() as {
+          conversations?: Array<Record<string, unknown>>;
+        };
+        conversationsByProject.set(projectId, body.conversations ?? []);
+        return json(route, {
+          saved: conversationsByProject.get(projectId)?.length ?? 0,
+        });
+      }
+      const conversationMatch = suffix.match(
+        /^workspace\/conversations\/([^/]+)$/,
+      );
+      if (conversationMatch && method === "PUT") {
+        const body = request.postDataJSON() as Record<string, unknown>;
+        const conversations = conversationsByProject.get(projectId) ?? [];
+        const index = conversations.findIndex(
+          (conversation) => conversation.id === conversationMatch[1],
+        );
+        if (index < 0) conversations.unshift(body);
+        else conversations[index] = body;
+        conversationsByProject.set(projectId, conversations);
+        return json(route, { saved: true });
+      }
+      if (conversationMatch && method === "DELETE") {
+        const conversations = conversationsByProject.get(projectId) ?? [];
+        const index = conversations.findIndex(
+          (conversation) => conversation.id === conversationMatch[1],
+        );
+        if (index >= 0) conversations.splice(index, 1);
+        conversationsByProject.set(projectId, conversations);
+        return json(route, { deleted: true });
+      }
 
       if (suffix === "knowledge" && method === "GET") {
         return json(route, {
@@ -359,7 +401,20 @@ async function grantReadAndOpenFile(page: Page) {
 }
 
 async function openLocalReview(page: Page) {
-  await page.getByText("Tinjau file, usulkan, dan jalankan tes").click();
+  const contextToggle = page
+    .getByTestId("workspace-chat-panel")
+    .getByRole("button", { name: "Konteks", exact: true });
+  if ((await contextToggle.getAttribute("aria-expanded")) !== "true") {
+    await contextToggle.click();
+  }
+  const contextPanel = page.getByRole("complementary", {
+    name: "Konteks percakapan",
+  });
+  await expect(contextPanel).toBeVisible();
+  await contextPanel
+    .locator("summary")
+    .filter({ hasText: "Tinjau usulan file" })
+    .click();
   await expect(page.getByRole("heading", { name: "Tinjau file" })).toBeVisible();
 }
 

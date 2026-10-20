@@ -122,8 +122,7 @@ export function createOptimizationGraphToolHandlers(
           return (
             !frozen ||
             source.documentVersionId !== frozen.documentVersionId ||
-            source.checksum !== frozen.checksum ||
-            source.permission !== frozen.sourcePermission
+            source.checksum !== frozen.checksum
           );
         })
       ) {
@@ -162,7 +161,6 @@ export function createOptimizationGraphToolHandlers(
         ? { sourceManifest: options.sourceManifest }
         : {}),
       snapshotId: available.snapshot.snapshotId,
-      requireCampusPermission: true,
       bounds,
       runId: options.runId,
     });

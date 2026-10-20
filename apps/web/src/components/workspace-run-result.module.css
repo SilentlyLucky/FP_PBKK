@@ -1,7 +1,7 @@
 .activity {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 0;
   margin-top: 16px;
   border-top: 1px solid var(--border);
   padding-top: 8px;
@@ -164,19 +164,81 @@
   padding-top: 4px;
 }
 
-.chatActivity summary {
+.chatActivity > summary,
+.activity > summary {
   display: flex;
   min-height: 44px;
   align-items: center;
   color: var(--muted-foreground);
   font-size: 12px;
+  font-weight: 600;
+  list-style: none;
   cursor: pointer;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
 }
 
-.chatActivity summary:focus-visible {
-  border-radius: 4px;
+.chatActivity > summary::-webkit-details-marker,
+.activity > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chatActivity > summary::before,
+.activity > summary::before {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  margin-right: 10px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+
+.chatActivity[open] > summary::before,
+.activity[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.chatActivity > summary:hover,
+.activity > summary:hover {
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--primary);
+}
+
+.chatActivity > summary:focus-visible,
+.activity > summary:focus-visible {
+  border-radius: 6px;
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.activityContent {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px 8px 4px;
+}
+
+.failureDetails {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.failureDetails code {
+  display: block;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  padding: 8px 10px;
+  color: var(--foreground);
+  font: 12px/1.5 var(--font-mono);
+  white-space: pre-wrap;
 }
 
 .chatAnswerActions {
@@ -186,7 +248,8 @@
   gap: 8px 16px;
 }
 
-.activity h3 {
+.activity h3,
+.chatActivity h3 {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 11px;

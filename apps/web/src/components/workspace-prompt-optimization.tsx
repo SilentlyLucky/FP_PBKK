@@ -162,6 +162,8 @@ function optimizationFailureMessage(errorCode: string | null): string {
       "Koneksi Senopati ditolak. Periksa status koneksi Senopati di Pengaturan, lalu coba lagi.",
     PROVIDER_HTTP_ERROR:
       "Senopati tidak dapat dihubungi. Periksa koneksi dan status provider, lalu coba lagi.",
+    PROVIDER_TRANSPORT_ERROR:
+      "Koneksi ke Senopati terputus sebelum respons HTTP diterima. Periksa status Run sebelum mengirim ulang.",
     PROVIDER_RESPONSE_INVALID:
       "Balasan Senopati tidak dapat dibaca. Coba lagi; jika berulang, periksa model Senopati di Pengaturan.",
     PROVIDER_TIMEOUT: providerTimeoutMessage,

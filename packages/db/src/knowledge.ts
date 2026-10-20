@@ -23,10 +23,6 @@ export const MAX_KNOWLEDGE_SOURCE_BYTES = 98_304;
 export const MAX_KNOWLEDGE_PDF_FILE_BYTES = 5_242_880;
 export const MAX_KNOWLEDGE_PDF_PAGES = 50;
 export const MAX_KNOWLEDGE_SOURCE_METADATA_BYTES = 16_384;
-export const MAX_GRAPH_BUILD_DOCUMENTS = 20;
-export const MAX_GRAPH_BUILD_CHUNKS = 120;
-export const MAX_GRAPH_BUILD_CALLS = 240;
-
 export type SourcePermission = "local_only" | "campus_indexer_allowed";
 export type RetrievalStrategy = "lexical" | "graph" | "full_context" | "hybrid";
 
@@ -436,7 +432,6 @@ function knowledgeChunksForInput(
     const joined = input.chunks.map((chunk) => chunk.content).join("\n\n");
     if (
       input.chunks.length < 1 ||
-      input.chunks.length > MAX_GRAPH_BUILD_CHUNKS ||
       joined !== content ||
       input.chunks.some(
         (chunk) =>
@@ -494,12 +489,11 @@ async function loadSelectedSources(
   const uniqueIds = [...new Set(sourceIds)].sort();
   if (
     uniqueIds.length === 0 ||
-    uniqueIds.length > MAX_GRAPH_BUILD_DOCUMENTS ||
     uniqueIds.length !== sourceIds.length
   ) {
     throw new KnowledgeOperationError(
       "SOURCE_SELECTION_INVALID",
-      "Pilih satu sampai dua puluh sumber yang berbeda.",
+      "Pilih setidaknya satu sumber yang berbeda.",
     );
   }
   const rows = await db
@@ -507,7 +501,6 @@ async function loadSelectedSources(
       documentId: schema.documents.id,
       displayName: schema.documents.displayName,
       sourceKind: schema.documents.sourceKind,
-      permission: schema.documents.trust,
       deletedAt: schema.documents.deletedAt,
       activeVersionId: schema.documents.activeVersionId,
       versionId: schema.documentVersions.id,
@@ -532,7 +525,7 @@ async function loadSelectedSources(
     );
   if (
     rows.length !== uniqueIds.length ||
-    rows.some(
+      rows.some(
       (row) =>
         row.deletedAt ||
         !row.versionId ||
@@ -579,10 +572,7 @@ async function loadSelectedSources(
         documentVersionId: row.versionId!,
         displayName: row.displayName,
         sourceKind: row.sourceKind,
-        permission:
-          row.permission === "campus_indexer_allowed"
-            ? "campus_indexer_allowed"
-            : "local_only",
+        permission: "campus_indexer_allowed",
         version: row.version!,
         checksum: row.checksum!,
         chunks,
@@ -670,7 +660,7 @@ async function createKnowledgeSourceInTransaction(
       projectId: input.projectId,
       displayName: clean.displayName,
       sourceKind: storedSourceKind(input.sourceKind),
-      trust: input.permission,
+      trust: "campus_indexer_allowed",
     })
     .returning({ id: schema.documents.id });
   if (!document) throw new Error("Source insert returned no row");
@@ -716,14 +706,7 @@ async function createKnowledgeSourceInTransaction(
         eq(schema.documents.id, document.id),
       ),
     );
-  if (input.permission === "campus_indexer_allowed") {
-    await enqueueKnowledgeEmbedding(
-      tx,
-      input.projectId,
-      document.id,
-      version.id,
-    );
-  }
+  await enqueueKnowledgeEmbedding(tx, input.projectId, document.id, version.id);
   return {
     sourceId: document.id,
     versionId: version.id,
@@ -911,7 +894,7 @@ async function replaceKnowledgeSourceInTransaction(
       .set({
         displayName: clean.displayName,
         sourceKind: storedSourceKind(input.sourceKind),
-        trust: input.permission,
+        trust: "campus_indexer_allowed",
         updatedAt: new Date(),
       })
       .where(
@@ -920,26 +903,12 @@ async function replaceKnowledgeSourceInTransaction(
           eq(schema.documents.id, input.sourceId),
         ),
       );
-    if (
-      document.trust !== input.permission &&
-      input.permission === "local_only" &&
-      document.activeVersionId
-    ) {
-      await purgeKnowledgeEmbeddingsForVersions(tx, input.projectId, [
-        document.activeVersionId,
-      ]);
-    }
-    if (
-      document.trust !== input.permission &&
-      input.permission === "campus_indexer_allowed"
-    ) {
-      await enqueueKnowledgeEmbedding(
-        tx,
-        input.projectId,
-        input.sourceId,
-        current.id,
-      );
-    }
+    await enqueueKnowledgeEmbedding(
+      tx,
+      input.projectId,
+      input.sourceId,
+      current.id,
+    );
     return {
       sourceId: input.sourceId,
       versionId: current.id,
@@ -1009,7 +978,7 @@ async function replaceKnowledgeSourceInTransaction(
     .set({
       displayName: clean.displayName,
       sourceKind: storedSourceKind(input.sourceKind),
-      trust: input.permission,
+      trust: "campus_indexer_allowed",
       activeVersionId: version.id,
       updatedAt: new Date(),
     })
@@ -1019,14 +988,12 @@ async function replaceKnowledgeSourceInTransaction(
         eq(schema.documents.id, input.sourceId),
       ),
     );
-  if (input.permission === "campus_indexer_allowed") {
-    await enqueueKnowledgeEmbedding(
-      tx,
-      input.projectId,
-      input.sourceId,
-      version.id,
-    );
-  }
+  await enqueueKnowledgeEmbedding(
+    tx,
+    input.projectId,
+    input.sourceId,
+    version.id,
+  );
   return {
     sourceId: input.sourceId,
     versionId: version.id,
@@ -1108,7 +1075,7 @@ export async function setKnowledgeSourcePermission(
   db: Database,
   projectId: string,
   sourceId: string,
-  permission: SourcePermission,
+  _permission: SourcePermission,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [document] = await tx
@@ -1131,26 +1098,17 @@ export async function setKnowledgeSourcePermission(
         "SOURCE_NOT_FOUND",
         "Sumber tidak tersedia.",
       );
-    if (document.trust === permission) return;
-    if (permission === "local_only" && document.activeVersionId) {
-      await purgeKnowledgeEmbeddingsForVersions(tx, projectId, [
-        document.activeVersionId,
-      ]);
-      await invalidateEvidenceForVersions(tx, projectId, [
-        document.activeVersionId,
-      ]);
-      await staleActiveGraphSnapshot(tx, projectId);
-    }
+    if (document.trust === "campus_indexer_allowed") return;
     await tx
       .update(schema.documents)
-      .set({ trust: permission, updatedAt: new Date() })
+      .set({ trust: "campus_indexer_allowed", updatedAt: new Date() })
       .where(
         and(
           eq(schema.documents.projectId, projectId),
           eq(schema.documents.id, sourceId),
         ),
       );
-    if (permission === "campus_indexer_allowed" && document.activeVersionId) {
+    if (document.activeVersionId) {
       await enqueueKnowledgeEmbedding(
         tx,
         projectId,
@@ -1295,8 +1253,7 @@ export async function listKnowledgeSources(
     })
     .from(schema.documents)
     .where(eq(schema.documents.projectId, projectId))
-    .orderBy(desc(schema.documents.updatedAt))
-    .limit(100);
+    .orderBy(desc(schema.documents.updatedAt));
   const versionIds = documents.flatMap((item) => item.activeVersionId ?? []);
   const versions = versionIds.length
     ? await db
@@ -1346,10 +1303,7 @@ export async function listKnowledgeSources(
       id: document.id,
       displayName: document.displayName,
       sourceKind: document.sourceKind,
-      permission:
-        document.permission === "campus_indexer_allowed"
-          ? "campus_indexer_allowed"
-          : "local_only",
+      permission: "campus_indexer_allowed",
       updatedAt: document.updatedAt,
       deleted: Boolean(document.deletedAt),
       version: version?.version ?? null,
@@ -1428,14 +1382,10 @@ export async function getKnowledgeSource(
         eq(schema.chunks.documentVersionId, row.versionId),
       ),
     )
-    .orderBy(asc(schema.chunks.ordinal))
-    .limit(MAX_GRAPH_BUILD_CHUNKS);
+    .orderBy(asc(schema.chunks.ordinal));
   return {
     ...row,
-    permission:
-      row.permission === "campus_indexer_allowed"
-        ? "campus_indexer_allowed"
-        : "local_only",
+    permission: "campus_indexer_allowed",
     chunks,
   };
 }
@@ -1480,7 +1430,7 @@ export function getKnowledgeReferencePack() {
     metadata: {
       schema_version: pack.schema_version,
       corpus_id: pack.corpus_id,
-      status: "ready_local_only",
+      status: "ready",
       source_snapshot_at_utc: pack.source_snapshot_at_utc,
       scope: pack.scope,
     },
@@ -1517,7 +1467,7 @@ function referenceSourceInput(
     content: knowledgeChunks.map((chunk) => chunk.content).join("\n\n"),
     contentType: "text/markdown",
     sourceKind: "reference_pack",
-    permission: "local_only",
+    permission: "campus_indexer_allowed",
     sourceRef: source.url,
     sourceMetadata,
     chunks: knowledgeChunks,
@@ -1527,19 +1477,12 @@ function referenceSourceInput(
 export async function importKnowledgeReferencePack(
   db: Database,
   projectId: string,
-  permission: "local_only",
 ): Promise<{
   imported: number;
   skipped: number;
   documentIds: string[];
   packId: string;
 }> {
-  if (permission !== "local_only") {
-    throw new KnowledgeOperationError(
-      "SOURCE_PERMISSION_REQUIRED",
-      "Paket referensi hanya dapat diimpor sebagai local-only.",
-    );
-  }
   const pack = validatedReferencePack();
   return db.transaction(async (tx) => {
     const [project] = await tx
@@ -1640,7 +1583,7 @@ export async function importKnowledgeReferencePack(
           stableJson(existing.sourceMetadata) ===
             stableJson(expectedMetadata) &&
           existing.displayName === input.displayName &&
-          existing.trust === "local_only";
+          existing.trust === input.permission;
         if (unchanged) {
           skipped += 1;
           documentIds.push(existing.documentId);
@@ -1694,20 +1637,6 @@ export async function previewGraphBuild(
     (total, item) => total + item.chunks.length,
     0,
   );
-  if (chunkCount > MAX_GRAPH_BUILD_CHUNKS) {
-    throw new KnowledgeOperationError(
-      "SOURCE_CHUNK_LIMIT",
-      `Build dibatasi ${MAX_GRAPH_BUILD_CHUNKS} chunk; kurangi sumber terpilih.`,
-      { maxChunks: MAX_GRAPH_BUILD_CHUNKS, selectedChunks: chunkCount },
-    );
-  }
-  if (manifest.some((item) => item.permission !== "campus_indexer_allowed")) {
-    throw new KnowledgeOperationError(
-      "SOURCE_PERMISSION_REQUIRED",
-      "Setiap sumber harus mengizinkan campus indexer sebelum build.",
-    );
-  }
-
   const [connection] = await db
     .select({
       status: schema.providerConnections.connectionStatus,
@@ -1743,7 +1672,7 @@ export async function previewGraphBuild(
               providerInput.environmentModel !== requestedModel
             ? "Model pada koneksi berbeda dari model gateway yang aktif."
             : null;
-  const maxModelCalls = Math.min(MAX_GRAPH_BUILD_CALLS, chunkCount * 2);
+  const maxModelCalls = chunkCount * 2;
   const minModelCalls = chunkCount;
   const selectedMaxModelCalls = selection.maxModelCalls ?? minModelCalls;
   if (
@@ -1756,7 +1685,21 @@ export async function previewGraphBuild(
       { minModelCalls, maxModelCalls },
     );
   }
-  const sourceManifestHash = checksumText(stableJson(sourceManifest));
+  const sourceManifestHash = checksumText(
+    stableJson(
+      sourceManifest.map((source) => ({
+        documentId: source.documentId,
+        documentVersionId: source.documentVersionId,
+        displayName: source.displayName,
+        sourceKind: source.sourceKind,
+        permission: source.permission,
+        version: source.version,
+        checksum: source.checksum,
+        structuralFingerprint: source.structuralFingerprint,
+        chunks: source.chunks,
+      })),
+    ),
+  );
   return {
     ready: providerReady,
     projectId,
@@ -1781,7 +1724,6 @@ export async function enqueueGraphBuild(
     requestedModel: string;
     maxModelCalls: number;
     idempotencyKey: string;
-    allowCampusEgress: true;
     providerConnectionId: string;
   },
 ): Promise<{
@@ -1790,12 +1732,6 @@ export async function enqueueGraphBuild(
   state: "queued";
   created: boolean;
 }> {
-  if (!input.allowCampusEgress) {
-    throw new KnowledgeOperationError(
-      "SOURCE_PERMISSION_REQUIRED",
-      "Campus egress harus disetujui secara eksplisit.",
-    );
-  }
   return db.transaction(async (tx) => {
     const [project] = await tx
       .select({ id: schema.projects.id })
@@ -1813,6 +1749,20 @@ export async function enqueueGraphBuild(
         "PROJECT_NOT_FOUND",
         "Proyek tidak tersedia.",
       );
+
+    // Serialize build enqueue against source permission changes. The worker
+    // verifies permissions again before loading source chunks.
+    await tx
+      .select({ id: schema.documents.id })
+      .from(schema.documents)
+      .where(
+        and(
+          eq(schema.documents.projectId, input.projectId),
+          inArray(schema.documents.id, input.sourceIds),
+        ),
+      )
+      .orderBy(asc(schema.documents.id))
+      .for("update");
 
     const preview = await previewGraphBuild(tx, input.projectId, input, {
       keyConfigured: true,
@@ -1934,7 +1884,6 @@ export async function enqueueGraphBuild(
           spanCorrections: { entities: 0, relations: 0 },
           completedChunks: [],
           failedChunks: [],
-          allowCampusEgress: true,
           requestedModel: input.requestedModel,
         },
       })
@@ -1973,7 +1922,6 @@ export async function enqueueGraphBuild(
             spanCorrections: { entities: 0, relations: 0 },
             completedChunks: [],
             failedChunks: [],
-            allowCampusEgress: true,
             requestedModel: input.requestedModel,
           },
           runId: run.id,
@@ -2200,41 +2148,43 @@ export async function graphSnapshotIsCurrent(
   sourceManifest: unknown,
 ): Promise<boolean> {
   const entries = manifestEntries(sourceManifest);
-  if (!entries.length || entries.length > MAX_GRAPH_BUILD_DOCUMENTS)
-    return false;
+  if (!entries.length) return false;
+  const currentRows = await db
+    .select({
+      documentId: schema.documents.id,
+      activeVersionId: schema.documents.activeVersionId,
+      deletedAt: schema.documents.deletedAt,
+      checksum: schema.documentVersions.checksum,
+      eligible: schema.documentVersions.eligible,
+    })
+    .from(schema.documents)
+    .innerJoin(
+      schema.documentVersions,
+      and(
+        eq(schema.documentVersions.projectId, schema.documents.projectId),
+        eq(schema.documentVersions.documentId, schema.documents.id),
+        eq(schema.documentVersions.id, schema.documents.activeVersionId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.documents.projectId, projectId),
+        inArray(
+          schema.documents.id,
+          entries.map((entry) => entry.documentId),
+        ),
+      ),
+    );
+  if (currentRows.length !== entries.length) return false;
+  const currentById = new Map(currentRows.map((row) => [row.documentId, row]));
   for (const entry of entries) {
-    const [row] = await db
-      .select({
-        activeVersionId: schema.documents.activeVersionId,
-        deletedAt: schema.documents.deletedAt,
-        permission: schema.documents.trust,
-        checksum: schema.documentVersions.checksum,
-        eligible: schema.documentVersions.eligible,
-      })
-      .from(schema.documents)
-      .innerJoin(
-        schema.documentVersions,
-        and(
-          eq(schema.documentVersions.projectId, schema.documents.projectId),
-          eq(schema.documentVersions.documentId, schema.documents.id),
-          eq(schema.documentVersions.id, schema.documents.activeVersionId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.documents.projectId, projectId),
-          eq(schema.documents.id, entry.documentId),
-        ),
-      )
-      .limit(1);
+    const row = currentById.get(entry.documentId);
     if (
       !row ||
       row.deletedAt ||
       !row.eligible ||
       row.activeVersionId !== entry.documentVersionId ||
-      row.checksum !== entry.checksum ||
-      row.permission !== entry.permission ||
-      row.permission !== "campus_indexer_allowed"
+      row.checksum !== entry.checksum
     )
       return false;
   }
@@ -2468,7 +2418,6 @@ export async function getProjectReadiness(
               eq(schema.documents.projectId, schema.documentVersions.projectId),
               eq(schema.documents.id, schema.documentVersions.documentId),
               eq(schema.documents.activeVersionId, schema.documentVersions.id),
-              eq(schema.documents.trust, "campus_indexer_allowed"),
               isNull(schema.documents.deletedAt),
             ),
           )
@@ -2600,6 +2549,8 @@ export async function listActiveGraphAssertions(
   const snapshot = await getActiveGraphSnapshot(db, projectId);
   if (!snapshot || snapshot.state !== "active")
     return { snapshotId: null, assertions: [] };
+  if (!(await graphSnapshotIsCurrent(db, projectId, snapshot.sourceManifest)))
+    return { snapshotId: null, assertions: [] };
   const objectEntity = alias(schema.graphEntities, "object_entity");
   const rows = await db
     .select({
@@ -2722,7 +2673,6 @@ export async function listActiveGraphAssertions(
         eq(schema.documents.projectId, schema.documentVersions.projectId),
         eq(schema.documents.id, schema.documentVersions.documentId),
         eq(schema.documents.activeVersionId, schema.documentVersions.id),
-        eq(schema.documents.trust, "campus_indexer_allowed"),
         isNull(schema.documents.deletedAt),
       ),
     )
@@ -2979,7 +2929,6 @@ export async function reviewGraphAssertion(
           eq(schema.documents.projectId, schema.documentVersions.projectId),
           eq(schema.documents.id, schema.documentVersions.documentId),
           eq(schema.documents.activeVersionId, schema.documentVersions.id),
-          eq(schema.documents.trust, "campus_indexer_allowed"),
           isNull(schema.documents.deletedAt),
         ),
       )

@@ -1,6 +1,7 @@
 import {
   aggregateUsageProvenance,
   CampusChatProvider,
+  ProviderRequestError,
 } from "@promptlab/providers";
 
 import { recordInferenceOutcome, reserveInferenceCall } from "./ledger.mjs";
@@ -18,16 +19,20 @@ if (!apiKey || !model) {
   process.exitCode = 2;
 } else {
   await reserveInferenceCall("campus_gateway");
+  const startedAt = performance.now();
   try {
-    const provider = new CampusChatProvider({ apiKey });
+    const provider = new CampusChatProvider({
+      apiKey,
+      disableThinking: true,
+    });
     const result = await provider.complete({
       model,
       purpose: "optimizer",
-      maxOutputTokens: 16,
+      maxOutputTokens: 64,
       messages: [
         {
           role: "user",
-          content: "Reply exactly: PromptLab provider smoke OK.",
+          content: "Reply exactly: halo.",
         },
       ],
     });
@@ -46,6 +51,7 @@ if (!apiKey || !model) {
         requestedModel: result.requestedModel,
         responseModel: result.responseModel,
         responseId: result.responseId,
+        elapsedMs: Math.round(performance.now() - startedAt),
         usage: result.usage,
         capabilitiesObserved: ["non-stream chat completion"],
       })}\n`,
@@ -55,13 +61,29 @@ if (!apiKey || !model) {
       error instanceof Error && "code" in error
         ? String(error.code)
         : "PROVIDER_ERROR";
+    const diagnostics =
+      error instanceof ProviderRequestError && error.diagnostics
+        ? {
+            phase: error.diagnostics.phase,
+            elapsedMs: error.diagnostics.elapsedMs,
+            responseStatus: error.diagnostics.responseStatus,
+            transportCode: error.diagnostics.transportCode,
+          }
+        : undefined;
     await recordInferenceOutcome("campus_gateway", {
       outcome: "failed",
       requestedModel: model,
       capabilitiesObserved: [`single request failed (${code})`],
     });
     process.stderr.write(
-      `Campus inference failed (${code}); no retry was made.\n`,
+      `${JSON.stringify({
+        provider: "campus_gateway",
+        requestedModel: model,
+        code,
+        diagnostics,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        retried: false,
+      })}\n`,
     );
     process.exitCode = 1;
   }

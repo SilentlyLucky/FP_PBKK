@@ -656,7 +656,6 @@ describe.skipIf(!integrationRequested)(
         requestedModel: mockModel,
         maxModelCalls: selectedSourceIds.length,
         idempotencyKey: `knowledge-eval-index-${randomUUID()}`,
-        allowCampusEgress: true,
         providerConnectionId: optimizerConnectionId,
       });
       const indexCalls = { count: 0 };

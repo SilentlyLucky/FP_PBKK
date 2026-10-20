@@ -31,7 +31,7 @@ export async function POST(
   const parsed = GraphBuildEnqueueRequestSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
-      { error: "EXPLICIT_CAMPUS_EGRESS_REQUIRED", message: "Setujui egress sumber sebelum antrekan build." },
+      { error: "INVALID_GRAPH_BUILD_REQUEST", message: "Sumber dan budget build tidak valid." },
       { status: 400 },
     );
   }
@@ -76,7 +76,6 @@ export async function POST(
       requestedModel,
       maxModelCalls: parsed.data.maxModelCalls,
       idempotencyKey: parsed.data.idempotencyKey,
-      allowCampusEgress: true,
       providerConnectionId: connection.id,
     });
     return Response.json({ build: result }, { status: result.created ? 201 : 200 });

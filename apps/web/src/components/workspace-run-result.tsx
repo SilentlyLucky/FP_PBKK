@@ -119,18 +119,22 @@ function statusLabel(status: string, completed: boolean, failed: boolean) {
 
 function retrievalReasonLabel(reason: string): string {
   switch (reason) {
+    case "workspace_target_preflight":
+      return "server menyiapkan bukti sumber sebelum Codex dijalankan";
     case "senopati_selected_lexical":
       return "Senopati memilih pencarian leksikal";
+    case "senopati_selected_hybrid":
+      return "Senopati memilih retrieval hybrid";
     case "senopati_selected_graph":
       return "Senopati memilih GraphRAG";
     case "senopati_skipped_retrieval":
       return "Senopati tidak memerlukan pencarian sumber";
     case "auto_graph_unavailable_at_enqueue":
-      return "snapshot GraphRAG tidak tersedia saat run dibuat";
+      return "snapshot GraphRAG tidak tersedia saat run dibuat; Auto memakai retrieval hybrid jika embedding siap, lalu leksikal";
     case "auto_graph_unavailable_at_worker_preflight":
-      return "snapshot GraphRAG tidak lagi tersedia saat run dimulai";
+      return "snapshot GraphRAG tidak lagi tersedia saat run dimulai; Auto memakai retrieval hybrid jika embedding siap, lalu leksikal";
     case "auto_graph_unavailable_during_retrieval":
-      return "snapshot berubah; pencarian leksikal digunakan";
+      return "snapshot berubah; Auto beralih ke retrieval hybrid, dengan fallback leksikal bila embedding tidak tersedia";
     case "no_sources_selected":
       return "tidak ada sumber yang dipilih";
     default:
@@ -157,7 +161,6 @@ function parseWorkspaceRetrievalEvidence(
       typeof evidence.quote !== "string" ||
       typeof evidence.documentId !== "string" ||
       typeof evidence.documentName !== "string" ||
-      evidence.sourcePermission !== "campus_indexer_allowed" ||
       typeof evidence.documentVersionId !== "string" ||
       typeof evidence.documentVersion !== "number" ||
       typeof evidence.sourceChecksum !== "string" ||
@@ -175,7 +178,10 @@ function parseWorkspaceRetrievalEvidence(
         quote: evidence.quote,
         documentId: evidence.documentId,
         documentName: evidence.documentName,
-        sourcePermission: evidence.sourcePermission,
+        sourcePermission:
+          typeof evidence.sourcePermission === "string"
+            ? evidence.sourcePermission
+            : "local_only",
         sourceRef:
           typeof evidence.sourceRef === "string" ? evidence.sourceRef : null,
         documentVersionId: evidence.documentVersionId,
@@ -289,8 +295,12 @@ export function WorkspaceRunResult({
 
   useEffect(() => {
     if (focusOnMount) headingRef.current?.focus();
+    const replayMode =
+      initialAnswer !== null && isTerminal(initialStatus)
+        ? "?snapshot=completed"
+        : "";
     const source = new EventSource(
-      `/api/projects/${projectId}/runs/${runId}/events`,
+      `/api/projects/${projectId}/runs/${runId}/events${replayMode}`,
     );
     let lastSequence = 0;
     let stopped = false;
@@ -446,8 +456,17 @@ export function WorkspaceRunResult({
               )
             : null;
 
-        if (nextStatus) onStatusChangeRef.current?.(nextStatus);
-        if (event.eventType === "run.completed" && answerText !== null) {
+        if (
+          nextStatus &&
+          (!isTerminal(initialStatus) || isTerminal(nextStatus))
+        ) {
+          onStatusChangeRef.current?.(nextStatus);
+        }
+        if (
+          event.eventType === "run.completed" &&
+          answerText !== null &&
+          !initialAnswer
+        ) {
           onCompletedRef.current?.(answerText);
         }
 
@@ -548,18 +567,26 @@ export function WorkspaceRunResult({
     ["agent.action", "tool.started"].includes(latestWorkEvent.eventType)
       ? describeRunActivity(latestWorkEvent, { providerLabel })
       : null;
+  const chatAnswerLabel =
+    current.workspaceChatOutcome === "clarification_required"
+      ? "Klarifikasi Senopati"
+      : "Jawaban Codex";
 
   if (chatPresentation) {
     return (
       <section
         className={styles.chatAnswer}
-        aria-label={`Jawaban ${providerLabel}`}
+        aria-label={chatAnswerLabel}
         data-state={
           current.failed ? "failed" : current.completed ? "complete" : "working"
         }
       >
         <div className={styles.chatAnswerHeading}>
-          <strong>PromptLab</strong>
+          <strong>
+            {current.workspaceChatOutcome === "clarification_required"
+              ? "Senopati"
+              : providerLabel}
+          </strong>
           <span>
             {current.completed
               ? current.workspaceChatOutcome === "clarification_required"
@@ -594,12 +621,6 @@ export function WorkspaceRunResult({
               Saya belum dapat menyelesaikan jawaban ini. Coba lagi setelah
               memeriksa koneksi provider.
             </p>
-            {current.errorCode ? (
-              <details className="workspace-run-error">
-                <summary>Detail kegagalan</summary>
-                <code>{current.errorCode}</code>
-              </details>
-            ) : null}
           </div>
         ) : current.status.startsWith("paused_") ? (
           <p className="helper" role="status">
@@ -731,19 +752,25 @@ export function WorkspaceRunResult({
           </section>
         ) : null}
 
-        {current.activityEvents.length ? (
+        {current.activityEvents.length || current.errorCode ? (
           <details className={styles.chatActivity}>
-            <summary>
-              {terminal
-                ? "Aktivitas tersimpan"
-                : `Aktivitas${latestWork ? ` · ${latestWork.title}` : " run"}`}
-            </summary>
-            <RunActivityList
-              events={current.activityEvents}
-              context={{ providerLabel }}
-              label="Aktivitas percakapan"
-              maxEvents={8}
-            />
+            <summary>Detail kegiatan</summary>
+            <div className={styles.activityContent}>
+              {current.errorCode ? (
+                <section className={styles.failureDetails}>
+                  <h3>Detail kegagalan</h3>
+                  <code>{current.errorCode}</code>
+                </section>
+              ) : null}
+              {current.activityEvents.length ? (
+                <RunActivityList
+                  events={current.activityEvents}
+                  context={{ providerLabel }}
+                  label="Aktivitas percakapan"
+                  maxEvents={8}
+                />
+              ) : null}
+            </div>
           </details>
         ) : null}
 
@@ -812,12 +839,6 @@ export function WorkspaceRunResult({
             <p className="error-message" role="status">
               Run gagal. Periksa status di detail run sebelum mencoba lagi.
             </p>
-            {current.errorCode ? (
-              <details className="workspace-run-error">
-                <summary>Detail kegagalan</summary>
-                <code>{current.errorCode}</code>
-              </details>
-            ) : null}
           </div>
         ) : current.status.startsWith("paused_") ? (
           <p className="helper" role="status">
@@ -842,19 +863,26 @@ export function WorkspaceRunResult({
             Codex sedang menyiapkan jawaban…
           </p>
         )}
-        {current.activityEvents.length ? (
-          <section
-            className={styles.activity}
-            aria-label="Aktivitas terbaru run"
-          >
-            <h3>Aktivitas terbaru</h3>
-            <RunActivityList
-              events={current.activityEvents}
-              context={{ providerLabel }}
-              label="Urutan aktivitas terbaru"
-              maxEvents={5}
-            />
-          </section>
+        {current.activityEvents.length || current.errorCode ? (
+          <details className={styles.activity}>
+            <summary>Detail kegiatan</summary>
+            <div className={styles.activityContent}>
+              {current.errorCode ? (
+                <section className={styles.failureDetails}>
+                  <h3>Detail kegagalan</h3>
+                  <code>{current.errorCode}</code>
+                </section>
+              ) : null}
+              {current.activityEvents.length ? (
+                <RunActivityList
+                  events={current.activityEvents}
+                  context={{ providerLabel }}
+                  label="Urutan aktivitas terbaru"
+                  maxEvents={5}
+                />
+              ) : null}
+            </div>
+          </details>
         ) : null}
         <div className="workspace-run-result-actions">
           {current.status.startsWith("paused_") ? (

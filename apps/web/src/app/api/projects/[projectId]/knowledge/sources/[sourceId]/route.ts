@@ -1,8 +1,4 @@
 import {
-  KnowledgeSourcePermissionSchema,
-  type KnowledgeSourcePermission,
-} from "@promptlab/contracts";
-import {
   deleteKnowledgeSource,
   getKnowledgeSource,
   replaceKnowledgeSource,
@@ -86,30 +82,19 @@ export async function PATCH(
   const database = databaseOrUnavailable();
   if ("response" in database) return database.response;
 
-  let body: unknown;
   try {
-    body = await request.json();
+    await request.json();
   } catch {
     return Response.json({ error: "INVALID_JSON" }, { status: 400 });
   }
-  const parsed = KnowledgeSourcePermissionSchema.safeParse(
-    body && typeof body === "object" && "permission" in body
-      ? (body as { permission: unknown }).permission
-      : undefined,
-  );
-  if (!parsed.success)
-    return Response.json(
-      { error: "INVALID_SOURCE_PERMISSION" },
-      { status: 400 },
-    );
   try {
     await setKnowledgeSourcePermission(
       database.db,
       projectId,
       sourceId,
-      parsed.data as KnowledgeSourcePermission,
+      "campus_indexer_allowed",
     );
-    return Response.json({ sourceId, permission: parsed.data });
+    return Response.json({ sourceId, permission: "campus_indexer_allowed" });
   } catch (error) {
     return knowledgeErrorResponse(error);
   }

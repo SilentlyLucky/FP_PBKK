@@ -412,12 +412,11 @@ export function ControlledEvaluationSetup({
         </p>
       ) : null}
 
-      <fieldset className={styles.armSelection}>
-        <legend>Metode dalam perbandingan</legend>
-        <div className={styles.armOptions}>
+      <div className={styles.armSelection}>
+        <p className={styles.armLegend}>Metode otomatis</p>
+        <ul className={styles.armOptions} aria-label="Metode yang dibandingkan">
           {requiredArms.map((arm) => (
-            <label key={arm.id}>
-              <input type="checkbox" checked disabled readOnly />
+            <li key={arm.id}>
               <span>
                 <strong>{arm.label}</strong>
                 <small>
@@ -426,14 +425,14 @@ export function ControlledEvaluationSetup({
                     : arm.description}
                 </small>
               </span>
-            </label>
+            </li>
           ))}
-        </div>
+        </ul>
         <p className="helper">
-          Ketiga metode wajib agar perbandingan A/R/G lengkap. Model, kedalaman
-          berpikir, dan versi sumber RAG/GraphRAG dibuat sama.
+          Batch selalu mencakup Original, RAG, dan GraphRAG. Pilihan metode
+          tidak diperlukan; model dan sumber dibuat sama agar hasilnya setara.
         </p>
-      </fieldset>
+      </div>
 
       <SourceSelection
         sources={commonSources}

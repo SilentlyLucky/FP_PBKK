@@ -148,6 +148,7 @@ async function installDraftFixtures(
   options: { unknownFirstRunCreation?: boolean } = {},
 ): Promise<DraftFixture> {
   let currentContent = originalContent;
+  const storedConversations: Array<Record<string, unknown>> = [];
   const fixture: DraftFixture = {
     unexpectedRequests: [],
     promptBodies: [],
@@ -197,6 +198,39 @@ async function installDraftFixtures(
     const match = path.match(/^\/api\/projects\/([^/]+)(?:\/(.*))?$/);
     if (match && match[1] === projectId) {
       const suffix = match[2] ?? "";
+      if (suffix === "workspace/conversations" && method === "GET") {
+        return json(route, { conversations: storedConversations });
+      }
+      if (suffix === "workspace/conversations" && method === "PUT") {
+        const body = request.postDataJSON() as {
+          conversations?: Array<Record<string, unknown>>;
+        };
+        storedConversations.splice(
+          0,
+          storedConversations.length,
+          ...(body.conversations ?? []),
+        );
+        return json(route, { saved: storedConversations.length });
+      }
+      const conversationMatch = suffix.match(
+        /^workspace\/conversations\/([^/]+)$/,
+      );
+      if (conversationMatch && method === "PUT") {
+        const body = request.postDataJSON() as Record<string, unknown>;
+        const index = storedConversations.findIndex(
+          (conversation) => conversation.id === conversationMatch[1],
+        );
+        if (index < 0) storedConversations.unshift(body);
+        else storedConversations[index] = body;
+        return json(route, { saved: true });
+      }
+      if (conversationMatch && method === "DELETE") {
+        const index = storedConversations.findIndex(
+          (conversation) => conversation.id === conversationMatch[1],
+        );
+        if (index >= 0) storedConversations.splice(index, 1);
+        return json(route, { deleted: true });
+      }
       if (suffix === "knowledge" && method === "GET") {
         return json(route, { projectId, sources: [], builds: [] });
       }
@@ -412,9 +446,19 @@ async function openSelectedFile(page: Page) {
   await expect(
     page.getByRole("heading", { level: 1, name: "Workspace" }),
   ).toBeVisible();
-  await page
+  const contextToggle = page
+    .getByTestId("workspace-chat-panel")
+    .getByRole("button", { name: "Konteks", exact: true });
+  if ((await contextToggle.getAttribute("aria-expanded")) !== "true") {
+    await contextToggle.click();
+  }
+  const contextPanel = page.getByRole("complementary", {
+    name: "Konteks percakapan",
+  });
+  await expect(contextPanel).toBeVisible();
+  await contextPanel
     .locator("summary")
-    .filter({ hasText: "Tinjau file, usulkan, dan jalankan tes" })
+    .filter({ hasText: "Tinjau usulan file" })
     .click();
   await expect(
     page.getByLabel("Saya meminta akses baca sementara ke folder proyek ini."),

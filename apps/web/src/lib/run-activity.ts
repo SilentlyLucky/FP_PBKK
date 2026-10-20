@@ -83,6 +83,10 @@ const tools = {
     label: "Mengekstrak graf sumber",
     purpose: "Meminta ekstraksi graf untuk potongan sumber yang disetujui.",
   },
+  call_codex_target: {
+    label: "Memanggil Codex",
+    purpose: "Menjalankan prompt hasil keputusan Senopati di model Codex.",
+  },
 } as const;
 
 type ToolName = keyof typeof tools;
@@ -136,6 +140,12 @@ function safeModel(value: unknown): string | null {
   return safeModelPattern.test(trimmed) ? trimmed : null;
 }
 
+function safeFingerprint(value: unknown): string | null {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+    ? value
+    : null;
+}
+
 function safeCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -184,7 +194,9 @@ function safeRetrievalFallbackReason(value: unknown): string | null {
     "auto_graph_unavailable_at_enqueue",
     "auto_graph_unavailable_at_worker_preflight",
     "auto_graph_unavailable_during_retrieval",
+    "workspace_target_preflight",
     "senopati_selected_lexical",
+    "senopati_selected_hybrid",
     "senopati_selected_graph",
     "senopati_skipped_retrieval",
     "semantic_index_not_ready",
@@ -205,6 +217,100 @@ function safeRetrievalFallbackReason(value: unknown): string | null {
     "campus_embedding_provider_timeout",
     "campus_embedding_provider_aborted",
   ] as const);
+}
+
+function projectProviderFailureDiagnostics(
+  value: unknown,
+): Record<string, unknown> | null {
+  const diagnostics = record(value);
+  if (!diagnostics) return null;
+
+  const projected: Record<string, unknown> = {};
+  const phase = allowedValue(diagnostics.phase, [
+    "request_headers",
+    "response_headers",
+    "response_body",
+  ] as const);
+  if (phase) projected.phase = phase;
+
+  const elapsedMs = safeCount(diagnostics.elapsedMs);
+  if (elapsedMs !== null && elapsedMs <= 600_000)
+    projected.elapsedMs = elapsedMs;
+
+  const responseStatus = safeCount(diagnostics.responseStatus);
+  if (
+    responseStatus !== null &&
+    responseStatus >= 100 &&
+    responseStatus <= 599
+  ) {
+    projected.responseStatus = responseStatus;
+  }
+  const transportCode = safeProviderTransportCode(diagnostics.transportCode);
+  if (transportCode) projected.transportCode = transportCode;
+
+  return Object.keys(projected).length ? projected : null;
+}
+
+function safeProviderTransportCode(value: unknown): string | null {
+  return allowedValue(value, [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "ETIMEDOUT",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_HEADERS_TIMEOUT",
+    "UND_ERR_SOCKET",
+    "OTHER",
+  ] as const);
+}
+
+function providerFailureSummary(
+  value: unknown,
+  remoteOutcomeUnknown: boolean,
+): string | null {
+  const diagnostics = record(value);
+  if (!diagnostics) return null;
+
+  const phase = allowedValue(diagnostics.phase, [
+    "request_headers",
+    "response_headers",
+    "response_body",
+  ] as const);
+  const elapsedMs = safeCount(diagnostics.elapsedMs);
+  const elapsed =
+    elapsedMs === null
+      ? ""
+      : ` setelah ${Math.round(elapsedMs / 100) / 10} detik`;
+  const responseStatus = safeCount(diagnostics.responseStatus);
+  const transportCode = safeProviderTransportCode(diagnostics.transportCode);
+  const transport = transportCode ? ` (${transportCode})` : "";
+
+  if (phase === "request_headers") {
+    return remoteOutcomeUnknown
+      ? `Request ke gateway Senopati terputus sebelum header respons HTTP diterima${elapsed}${transport}. Gateway mungkin sudah menerima request; periksa status Run sebelum mengirim ulang.`
+      : `Request ke gateway Senopati berhenti sebelum header respons HTTP diterima${elapsed}${transport}. Periksa koneksi atau kapasitas gateway, lalu coba lagi.`;
+  }
+  if (responseStatus !== null && responseStatus >= 400) {
+    if (remoteOutcomeUnknown && responseStatus >= 500) {
+      return `Gateway Senopati mengembalikan HTTP ${responseStatus}${elapsed}. Hasil pemrosesan request belum diketahui; periksa status Run sebelum mengirim ulang.`;
+    }
+    return responseStatus === 504
+      ? `Gateway Senopati mengembalikan HTTP 504${elapsed}. Gateway menghentikan request sebelum jawaban selesai; coba lagi nanti atau periksa kapasitas gateway.`
+      : `Gateway Senopati mengembalikan HTTP ${responseStatus}. Periksa status provider, lalu coba lagi.`;
+  }
+  if (phase === "response_body") {
+    return remoteOutcomeUnknown
+      ? `Koneksi Senopati terputus saat membaca isi respons${elapsed}${transport}. Hasil pemrosesan belum diketahui; periksa status Run sebelum mengirim ulang.`
+      : `Gateway Senopati telah mengirim header respons, tetapi isi respons gagal diproses${elapsed}. Coba lagi atau periksa model Senopati di Pengaturan.`;
+  }
+  if (phase === "response_headers") {
+    return `Gateway Senopati mengirim header respons${elapsed}, tetapi status HTTP tidak tercatat. Periksa koneksi provider, lalu coba lagi.`;
+  }
+  if (responseStatus !== null) {
+    return `Senopati merespons dengan HTTP ${responseStatus}, tetapi jawaban gagal diproses${elapsed}. Coba lagi atau periksa model Senopati di Pengaturan.`;
+  }
+  return null;
 }
 
 const providers = [
@@ -422,6 +528,7 @@ function projectToolSummary(
     get_graph_evidence: ["assertionCount", "resultCount"],
     get_graph_status: ["revision", "entityCount", "assertionCount"],
     campus_graph_extraction: ["attemptNumber"],
+    call_codex_target: ["promptCharacters", "responseCharacters"],
   };
   for (const key of numberFieldsByTool[toolName]) {
     const count = safeCount(summary[key]);
@@ -457,6 +564,16 @@ function projectToolSummary(
     ] as const);
     if (reason) projected.reason = reason;
   }
+  if (kind === "argumentsSummary") {
+    const queryFingerprint = safeFingerprint(summary.queryFingerprint);
+    if (queryFingerprint) projected.queryFingerprint = queryFingerprint;
+    const promptFingerprint = safeFingerprint(summary.promptFingerprint);
+    if (promptFingerprint) projected.promptFingerprint = promptFingerprint;
+  }
+  if (toolName === "call_codex_target") {
+    const responseModel = safeModel(summary.responseModel);
+    if (responseModel) projected.responseModel = responseModel;
+  }
   if (kind === "argumentsSummary" && toolName === "inspect_capabilities") {
     const provider = allowedValue(summary.provider, providers);
     if (provider) projected.provider = provider;
@@ -464,10 +581,64 @@ function projectToolSummary(
   return Object.keys(projected).length ? projected : null;
 }
 
+function projectAnalysisInput(value: unknown): Record<string, unknown> | null {
+  const input = record(value);
+  if (!input) return null;
+  const projected: Record<string, unknown> = {};
+  for (const key of [
+    "requestCharacters",
+    "promptCharacters",
+    "objectiveCharacters",
+    "invariantCount",
+    "testCaseCount",
+    "baselineResultCount",
+    "evaluationEvidenceCount",
+    "selectedSourceCount",
+    "historySummaryCount",
+    "clarificationCount",
+  ]) {
+    const count = safeCount(input[key]);
+    if (count !== null) projected[key] = count;
+  }
+  const requestFingerprint = safeFingerprint(input.requestFingerprint);
+  if (requestFingerprint) projected.requestFingerprint = requestFingerprint;
+  const retrievalStrategy = allowedValue(
+    input.retrievalStrategy,
+    retrievalStrategies,
+  );
+  if (retrievalStrategy) projected.retrievalStrategy = retrievalStrategy;
+  if (typeof input.targetAvailable === "boolean")
+    projected.targetAvailable = input.targetAvailable;
+  const targetModel = safeModel(input.targetModel);
+  if (targetModel) projected.targetModel = targetModel;
+  const priorToolResults = Array.isArray(input.priorToolResults)
+    ? input.priorToolResults
+        .slice(0, 8)
+        .flatMap((value) => {
+          const item = record(value);
+          const toolName = safeAgentToolName(item?.toolName);
+          if (!item || !toolName) return [];
+          const resultSummary = projectToolSummary(
+            toolName,
+            item.resultSummary,
+            "resultSummary",
+          );
+          return [
+            {
+              toolName,
+              ...(resultSummary ? { resultSummary } : {}),
+            },
+          ];
+        })
+    : [];
+  if (priorToolResults.length) projected.priorToolResults = priorToolResults;
+  return Object.keys(projected).length ? projected : null;
+}
+
 /**
  * Projects only presentation-safe fields for the project-wide Monitoring SSE.
- * It deliberately excludes prompts, summaries, tool arguments, answers, IDs,
- * filesystem paths, provider payloads, and arbitrary nested JSON.
+ * It deliberately excludes prompts, raw summaries and tool arguments, answers,
+ * IDs, filesystem paths, provider payloads, and arbitrary nested JSON.
  */
 export function projectRunActivityPayload(
   eventType: string,
@@ -557,6 +728,24 @@ export function projectRunActivityPayload(
   if (attemptNumber !== null) projected.attemptNumber = attemptNumber;
   const modelCall = safeCount(payload.modelCall);
   if (modelCall !== null) projected.modelCall = modelCall;
+  const decisionOutcome = allowedValue(payload.decisionOutcome, [
+    "tool_calls_selected",
+    "candidate_proposed",
+    "no_change_recommended",
+    "clarification_required",
+    "final_answer",
+    "finished",
+    "continue",
+  ] as const);
+  if (decisionOutcome) projected.decisionOutcome = decisionOutcome;
+  const optimizationDecision = allowedValue(payload.decision, [
+    "no_change",
+  ] as const);
+  if (optimizationDecision) projected.decision = optimizationDecision;
+  if (eventType === "agent.action") {
+    const analysisInput = projectAnalysisInput(payload.analysisInput);
+    if (analysisInput) projected.analysisInput = analysisInput;
+  }
   const caseCount = safeCount(payload.count);
   if (caseCount !== null) projected.count = caseCount;
   const sourceCount = safeCount(payload.sourceCount);
@@ -569,6 +758,13 @@ export function projectRunActivityPayload(
     projected.remoteOutcomeMayBeUnknown = payload.remoteOutcomeMayBeUnknown;
   const errorCode = safeCode(payload.errorCode);
   if (errorCode) projected.errorCode = errorCode;
+  if (eventType === "run.failed") {
+    const providerDiagnostics = projectProviderFailureDiagnostics(
+      payload.providerDiagnostics,
+    );
+    if (providerDiagnostics)
+      projected.providerDiagnostics = providerDiagnostics;
+  }
 
   const selectedTools = Array.isArray(payload.selectedTools)
     ? payload.selectedTools
@@ -725,13 +921,17 @@ function strategyLabel(value: unknown): string | null {
 function retrievalFallbackLabel(value: unknown): string | null {
   switch (value) {
     case "auto_graph_unavailable_at_enqueue":
-      return "Tidak ada snapshot GraphRAG yang cocok saat run dibuat; Auto memakai pencarian leksikal bila diperlukan.";
+      return "Tidak ada snapshot GraphRAG yang cocok saat run dibuat; Auto memakai retrieval hybrid bila embedding siap, lalu leksikal.";
     case "auto_graph_unavailable_at_worker_preflight":
-      return "Snapshot GraphRAG tidak lagi cocok saat run dimulai; Auto memakai pencarian leksikal bila diperlukan.";
+      return "Snapshot GraphRAG tidak lagi cocok saat run dimulai; Auto memakai retrieval hybrid bila embedding siap, lalu leksikal.";
     case "auto_graph_unavailable_during_retrieval":
-      return "Snapshot GraphRAG berubah saat pencarian; Auto beralih ke pencarian leksikal.";
+      return "Snapshot GraphRAG berubah saat pencarian; Auto beralih ke retrieval hybrid bila embedding siap, lalu leksikal.";
+    case "workspace_target_preflight":
+      return "Server menyiapkan bukti sumber terpilih sebelum Codex dijalankan.";
     case "senopati_selected_lexical":
       return "Senopati memilih pencarian leksikal dari opsi Auto.";
+    case "senopati_selected_hybrid":
+      return "Senopati memilih retrieval hybrid dari opsi Auto.";
     case "senopati_selected_graph":
       return "Senopati memilih GraphRAG dari opsi Auto.";
     case "senopati_skipped_retrieval":
@@ -940,6 +1140,22 @@ function toolResultSummary(
     return "Tool gagal saat dijalankan; detail kegagalan tidak dicatat.";
   if (toolName === "campus_graph_extraction" && result?.status === "succeeded")
     return "Ekstraksi graf selesai; hasil tercatat untuk diproses.";
+  if (toolName === "call_codex_target" && result?.available === true) {
+    const responseCharacters = countLabel(result.responseCharacters);
+    return `Codex mengembalikan jawaban${responseCharacters !== null ? ` sepanjang ${responseCharacters} karakter` : ""}; isi jawaban tidak ditampilkan.`;
+  }
+  if (
+    toolName === "call_codex_target" &&
+    result?.status === "target_call_limit_reached"
+  )
+    return "Codex tidak dipanggil karena batas pemanggilan target sudah tercapai.";
+  if (toolName === "call_codex_target" && result?.available === false) {
+    if (result.status === "target_not_configured")
+      return "Codex tidak dipanggil karena target belum dikonfigurasi.";
+    if (result.status === "target_not_verified")
+      return "Codex tidak dipanggil karena koneksi target belum terverifikasi.";
+    return "Codex tidak dipanggil karena target tidak tersedia.";
+  }
   if (!result) return "Tool selesai; ringkasan hasil tidak tersedia.";
   if (toolName === "search_graph_entities") {
     const evidenceCount = countLabel(result.evidenceCount);
@@ -1023,6 +1239,152 @@ function detail(
   value: string | null | undefined,
 ): RunActivityDetail | null {
   return value ? { label, value } : null;
+}
+
+function analysisOutcomeLabel(value: unknown): string | null {
+  switch (value) {
+    case "tool_calls_selected":
+      return "Memilih tool untuk langkah berikutnya";
+    case "candidate_proposed":
+      return "Mengusulkan kandidat prompt";
+    case "no_change_recommended":
+      return "Merekomendasikan prompt tidak diubah";
+    case "clarification_required":
+      return "Meminta klarifikasi sebelum melanjutkan";
+    case "final_answer":
+      return "Menyiapkan jawaban dari hasil yang tersedia";
+    case "finished":
+      return "Menyelesaikan langkah agen";
+    case "continue":
+      return "Melanjutkan analisis";
+    default:
+      return null;
+  }
+}
+
+function analysisInputDetails(value: unknown): RunActivityDetail[] {
+  const input = record(value);
+  if (!input) return [];
+  const details: Array<RunActivityDetail | null> = [];
+  const requestCharacters = countLabel(input.requestCharacters);
+  const requestFingerprint = safeFingerprint(input.requestFingerprint);
+  if (requestCharacters !== null) {
+    details.push(
+      detail(
+        "Input model",
+        `${requestCharacters} karakter; teks prompt disembunyikan.`,
+      ),
+    );
+  }
+  if (requestFingerprint)
+    details.push(detail("Fingerprint input", `SHA-256 ${requestFingerprint}`));
+
+  for (const [key, label] of [
+    ["promptCharacters", "Prompt awal"],
+    ["objectiveCharacters", "Arahan tambahan"],
+    ["invariantCount", "Aturan penting"],
+    ["testCaseCount", "Contoh uji"],
+    ["baselineResultCount", "Hasil prompt awal"],
+    ["evaluationEvidenceCount", "Bukti evaluasi"],
+    ["selectedSourceCount", "Sumber terpilih"],
+    ["historySummaryCount", "Ringkasan riwayat"],
+    ["clarificationCount", "Klarifikasi"],
+  ] as const) {
+    const count = countLabel(input[key]);
+    if (count !== null) {
+      const suffix = key.endsWith("Characters") ? " karakter" : " item";
+      details.push(detail(label, `${count}${suffix}`));
+    }
+  }
+  const retrievalStrategy = strategyLabel(input.retrievalStrategy);
+  if (retrievalStrategy)
+    details.push(detail("Strategi pencarian", retrievalStrategy));
+  if (typeof input.targetAvailable === "boolean") {
+    details.push(
+      detail(
+        "Target Codex",
+        input.targetAvailable ? "tersedia" : "tidak tersedia",
+      ),
+    );
+  }
+  const targetModel = safeModel(input.targetModel);
+  if (targetModel) details.push(detail("Model target", targetModel));
+
+  if (Array.isArray(input.priorToolResults)) {
+    const priorResults = input.priorToolResults.flatMap((value) => {
+      const item = record(value);
+      const toolName = safeAgentToolName(item?.toolName);
+      if (!item || !toolName) return [];
+      const resultSummary = record(item.resultSummary);
+      const resultText = resultSummary
+        ? toolResultSummary(toolName, resultSummary)
+        : "hasil tercatat";
+      return [`${tools[toolName].label}: ${resultText}`];
+    });
+    if (priorResults.length)
+      details.push(
+        detail("Hasil tool yang dianalisis", priorResults.join(" · ")),
+      );
+  }
+  return details.filter((item): item is RunActivityDetail => item !== null);
+}
+
+function optimizationDecisionLabel(value: unknown): string | null {
+  return value === "no_change"
+    ? "Senopati merekomendasikan prompt dipertahankan tanpa perubahan."
+    : null;
+}
+
+function toolArgumentDetails(
+  toolName: ToolName,
+  value: unknown,
+): RunActivityDetail[] {
+  const args = record(value);
+  if (!args) return [];
+  const details: Array<RunActivityDetail | null> = [];
+  const queryCharacters = countLabel(args.queryCharacters);
+  const queryFingerprint = safeFingerprint(args.queryFingerprint);
+  const promptCharacters = countLabel(args.promptCharacters);
+  const promptFingerprint = safeFingerprint(args.promptFingerprint);
+  const limit = countLabel(args.limit);
+  if (queryCharacters !== null)
+    details.push(detail("Panjang kueri", `${queryCharacters} karakter`));
+  if (queryFingerprint)
+    details.push(detail("Fingerprint kueri", `SHA-256 ${queryFingerprint}`));
+  if (promptCharacters !== null)
+    details.push(detail("Input prompt", `${promptCharacters} karakter`));
+  if (promptFingerprint)
+    details.push(detail("Fingerprint prompt", `SHA-256 ${promptFingerprint}`));
+  if (limit !== null) details.push(detail("Batas hasil", limit));
+
+  const countDetails: Partial<Record<ToolName, readonly [string, string][]>> = {
+    analyze_history: [["messageCount", "Pesan yang dianalisis"]],
+    search_knowledge: [["sourceCount", "Sumber yang dicari"]],
+    validate_candidate: [
+      ["candidateCharacters", "Panjang kandidat"],
+      ["invariantCount", "Aturan yang diperiksa"],
+    ],
+    evaluate_subset: [["developmentCaseCount", "Kasus yang diuji"]],
+    search_graph_entities: [["limit", "Batas entitas"]],
+    traverse_graph: [
+      ["seedCount", "Entitas awal"],
+      ["maxHops", "Maksimum langkah"],
+      ["maxNodes", "Maksimum node"],
+    ],
+    get_graph_evidence: [["assertionCount", "Pernyataan yang diperiksa"]],
+    get_source: [],
+    estimate_tokens: [["textCharacters", "Panjang teks"]],
+    inspect_capabilities: [],
+    search_verified_memory: [],
+    get_graph_status: [],
+    campus_graph_extraction: [],
+    call_codex_target: [],
+  };
+  for (const [key, label] of countDetails[toolName] ?? []) {
+    const count = countLabel(args[key]);
+    if (count !== null) details.push(detail(label, count));
+  }
+  return details.filter((item): item is RunActivityDetail => item !== null);
 }
 
 function getEventProvider(
@@ -1187,13 +1549,32 @@ export function describeRunActivity(
           title = "Senopati menganalisis hasil";
           summary = "Menentukan langkah optimasi berikutnya.";
           break;
+        case "optimization_decision": {
+          const decision = optimizationDecisionLabel(payload.decision);
+          title = decision
+            ? "Senopati merekomendasikan tanpa perubahan"
+            : "Keputusan optimasi tercatat";
+          summary =
+            decision ?? "Keputusan optimasi tercatat tanpa ringkasan tambahan.";
+          break;
+        }
         case "decision":
-          title = selectedTools.length
-            ? "Senopati memilih tool"
-            : "Senopati meninjau langkah berikutnya";
-          summary = selectedTools.length
-            ? `Tool terpilih: ${selectedTools.join(", ")}.`
-            : "Tidak ada nama tool yang tercatat pada keputusan ini.";
+          title =
+            payload.decisionOutcome === "no_change_recommended"
+              ? "Senopati merekomendasikan tanpa perubahan"
+              : selectedTools.length
+                ? "Senopati memilih tool"
+                : "Senopati meninjau langkah berikutnya";
+          summary =
+            analysisOutcomeLabel(payload.decisionOutcome) ??
+            (selectedTools.length
+              ? `Tool terpilih: ${selectedTools.join(", ")}.`
+              : "Tidak ada nama tool yang tercatat pada keputusan ini.");
+          if (
+            selectedTools.length &&
+            payload.decisionOutcome !== "tool_calls_selected"
+          )
+            summary += ` Tool terpilih: ${selectedTools.join(", ")}.`;
           break;
         case "candidate.proposed":
           title = "Kandidat prompt disiapkan";
@@ -1221,6 +1602,14 @@ export function describeRunActivity(
           (name) => safeToolName(name) !== null,
         );
       }
+      const decisionOutcome = analysisOutcomeLabel(payload.decisionOutcome);
+      if (decisionOutcome)
+        details.push(detail("Hasil analisis", decisionOutcome));
+      const modelCall = countLabel(payload.modelCall);
+      if (modelCall !== null)
+        details.push(detail("Panggilan model Senopati", modelCall));
+      const analysisInputs = analysisInputDetails(payload.analysisInput);
+      details.push(...analysisInputs);
       break;
     }
     case "agent.finished":
@@ -1257,9 +1646,17 @@ export function describeRunActivity(
             if (queryCharacters !== null)
               summary = `${tool.purpose} Kueri berisi ${queryCharacters} karakter.`;
           }
+          details.push(
+            ...toolArgumentDetails(toolName, payload.argumentsSummary),
+          );
         } else {
           summary = toolResultSummary(toolName, result);
           details.push(detail("Kode", safeCode(payload.errorCode)));
+          if (toolName === "call_codex_target") {
+            const responseModel = safeModel(result?.responseModel);
+            if (responseModel)
+              details.push(detail("Model respons", responseModel));
+          }
           if (toolName === "search_verified_memory" && result) {
             const resultCount = countLabel(result.resultCount);
             const reason = verifiedMemoryReasonLabel(result.reason);
@@ -1360,18 +1757,64 @@ export function describeRunActivity(
         status === "interrupted_unknown" ||
         payload.remoteOutcomeKnown === false ||
         payload.remoteOutcomeUnknown === true;
+      const providerSummary = providerFailureSummary(
+        payload.providerDiagnostics,
+        remoteUnknown,
+      );
       if (status === "canceled") {
         title = "Run dibatalkan";
         summary = remoteUnknown
           ? "Run lokal berhenti; hasil remote belum dapat dipastikan."
           : "Run dibatalkan; kepastian hasil provider tidak dicatat pada event.";
+        if (providerSummary) summary = `${summary} ${providerSummary}`;
       } else if (remoteUnknown) {
         title = "Run terhenti; hasil provider belum diketahui";
-        summary = "Koneksi berakhir sebelum hasil remote dapat dipastikan.";
+        summary = providerSummary
+          ? `Koneksi berakhir sebelum hasil remote dapat dipastikan. ${providerSummary}`
+          : "Koneksi berakhir sebelum hasil remote dapat dipastikan.";
+      } else if (providerSummary) {
+        ({ title, summary } = statusPresentation(status ?? "failed"));
+        summary = providerSummary;
       } else {
         ({ title, summary } = statusPresentation(status ?? "failed"));
       }
       details.push(detail("Kode", safeCode(payload.errorCode)));
+      const providerDiagnostics = record(payload.providerDiagnostics);
+      if (providerDiagnostics) {
+        const transportCode = safeProviderTransportCode(
+          providerDiagnostics.transportCode,
+        );
+        if (transportCode) details.push(detail("Transport", transportCode));
+        const responseStatus = safeCount(providerDiagnostics.responseStatus);
+        if (responseStatus !== null)
+          details.push(detail("Respons gateway", `HTTP ${responseStatus}`));
+
+        const elapsedMs = safeCount(providerDiagnostics.elapsedMs);
+        const elapsedLabel =
+          elapsedMs === null
+            ? null
+            : elapsedMs < 1_000
+              ? `${elapsedMs} ms`
+              : `${new Intl.NumberFormat("id-ID", {
+                  maximumFractionDigits: 1,
+                }).format(elapsedMs / 1_000)} detik`;
+        details.push(detail("Durasi request", elapsedLabel));
+
+        const requestPhase = allowedValue(providerDiagnostics.phase, [
+          "request_headers",
+          "response_headers",
+          "response_body",
+        ] as const);
+        const requestPhaseLabel =
+          requestPhase === "request_headers"
+            ? "Menunggu header respons"
+            : requestPhase === "response_headers"
+              ? "Respons HTTP diterima"
+              : requestPhase === "response_body"
+                ? "Membaca isi respons"
+                : null;
+        details.push(detail("Tahap request", requestPhaseLabel));
+      }
       break;
     }
     case "optimization.clarification.requested":

@@ -263,7 +263,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <a className="skip-link" href="#main-content">
         Lewati ke konten
       </a>
-      <div className="shell">
+      <div
+        className={`shell${pathname === "/workspace" ? " workspace-shell" : ""}`}
+      >
         <aside
           className={`sidebar${mobileMenuOpen ? " mobile-menu-open" : ""}`}
         >
@@ -335,7 +337,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             </div>
             <ProviderReadiness />
           </header>
-          <main id="main-content" tabIndex={-1} className="shell-main">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className={`shell-main${pathname === "/workspace" ? " workspace-main" : ""}`}
+          >
             <ProjectLoadStatus />
             {children}
           </main>

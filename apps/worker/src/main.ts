@@ -9,6 +9,7 @@ import {
   isNull,
   lt,
   max,
+  sql,
 } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
@@ -32,8 +33,12 @@ import {
 import {
   createDatabaseClient,
   currentCampusRetrievalEvidence,
+  enqueueGraphBuild,
   GRAPH_RETRIEVAL_HARD_BOUNDS,
   getActiveGraphSnapshot,
+  getKnowledgeEmbeddingIndexReadiness,
+  graphSnapshotIsCurrent,
+  previewGraphBuild,
   retrieveKnowledgeContext,
   isWorkspaceSourceManifestCurrent,
   schema,
@@ -49,12 +54,14 @@ import {
   providerConnectionMatchesPolicy,
   providerPurposePolicy,
 } from "@promptlab/providers";
+import { campusConfigurationFromEnvironment } from "@promptlab/providers/campus";
 import {
   campusCredentialFingerprint,
   campusCredentialFingerprintFromSnapshot,
   campusVerificationMatchesConfiguration,
 } from "@promptlab/providers/campus-verification";
 import { reserveInferenceCall } from "@promptlab/providers/provider-smoke-ledger";
+import { safeProviderFailureDiagnostics } from "./provider-failure-diagnostics.ts";
 import {
   CodexProviderError,
   codexAccountFingerprintFromSnapshot,
@@ -103,6 +110,7 @@ import {
 import {
   completeWorkspaceChatDecision,
   parseWorkspaceChatDecision,
+  workspaceChatGenerationPolicyForPrompt,
   workspaceChatDecisionOutputInstructions,
 } from "./workspace-chat-decision.ts";
 import { withProviderInferenceReservation } from "./provider-campaign.ts";
@@ -213,8 +221,8 @@ function buildWorkspaceChatDecisionPrompt(input: {
       ? "Verified memory sudah dicari oleh server sebelum keputusan optimizer pertama; tinjau hanya referensi development terbatas pada hasil tool sebelumnya. Sumber GraphRAG dipilih dan wajib dipakai. Giliran ini hanya memanggil search_graph_entities satu kali. Hasil dibatasi ke sumber dan snapshot yang dibekukan server, termasuk kutipan serta versi sumber. Setelah hasil diterima, berikan candidate/no-op pada giliran berikutnya. Jangan mengarang evidence atau beralih ke retrieval lain."
       : input.turn === 1 && autoRetrieval
         ? input.graphRetrievalAvailable
-          ? "Verified memory sudah dicari oleh server sebelum keputusan optimizer pertama; tinjau hasil terbatasnya. Auto retrieval tersedia. Jika sumber benar-benar diperlukan, pilih tepat satu route: search_knowledge untuk pencarian leksikal atau search_graph_entities untuk GraphRAG. Jangan panggil keduanya. Jika sumber tidak diperlukan, berikan candidate/no-op. Setelah pencarian dipilih, berikan candidate/no-op pada giliran berikutnya. Gunakan hanya sumber terpilih."
-          : "Verified memory sudah dicari oleh server sebelum keputusan optimizer pertama; tinjau hasil terbatasnya. Auto retrieval hanya memiliki route leksikal search_knowledge. Jika sumber benar-benar diperlukan, panggil satu pencarian leksikal. Jika tidak, berikan candidate/no-op. Gunakan hanya sumber terpilih."
+          ? "Verified memory sudah dicari oleh server sebelum keputusan optimizer pertama; tinjau hasil terbatasnya. Auto retrieval tersedia. Jika sumber benar-benar diperlukan, pilih tepat satu route: search_knowledge untuk retrieval hybrid leksikal dan semantik (embedding Senopati bila siap, dengan fallback leksikal) atau search_graph_entities untuk GraphRAG. Jangan panggil keduanya. Jika sumber tidak diperlukan, berikan candidate/no-op. Setelah pencarian dipilih, berikan candidate/no-op pada giliran berikutnya. Gunakan hanya sumber terpilih."
+          : "Verified memory sudah dicari oleh server sebelum keputusan optimizer pertama; tinjau hasil terbatasnya. Auto retrieval hanya memiliki route search_knowledge. Server memakai retrieval hybrid leksikal dan semantik bila embedding siap, lalu fallback leksikal jika tidak tersedia. Jika sumber benar-benar diperlukan, panggil search_knowledge satu kali. Jika tidak, berikan candidate/no-op. Gunakan hanya sumber terpilih."
         : input.turn === 1 && hybridRetrieval
           ? "Verified memory sudah dicari sekali oleh server sebelum keputusan optimizer pertama; tinjau hasil terbatasnya. Retrieval hybrid dipilih pengguna dan wajib dipakai. Bila sumber terpilih benar-benar diperlukan, panggil search_knowledge satu kali; server menjalankan pencarian leksikal dan semantik dengan izin serta versi sumber yang berlaku. Jangan beralih ke strategi lain. Setelah pencarian, boleh meminta satu get_source pada giliran berikutnya untuk chunk yang dikembalikan."
           : input.turn === 1 && input.sourceIds.length > 0
@@ -333,13 +341,100 @@ if (campusEmbeddingRuntime.unavailableReason) {
 
 function promptOptimizationFailureDetails(
   error: unknown,
+  remoteOutcomeUnknown = false,
 ): { code: string; summary: string } | null {
   if (error instanceof ProviderRequestError) {
+    const transportCode = error.diagnostics?.transportCode;
+    const transportHint = {
+      ECONNRESET: "Gateway menutup koneksi",
+      ECONNREFUSED: "Gateway menolak koneksi",
+      ENOTFOUND: "Nama host gateway tidak ditemukan",
+      EAI_AGAIN: "Pencarian alamat gateway gagal sementara",
+      ETIMEDOUT: "Pembuatan koneksi ke gateway melewati batas waktu",
+      UND_ERR_CONNECT_TIMEOUT:
+        "Pembuatan koneksi ke gateway melewati batas waktu",
+      UND_ERR_HEADERS_TIMEOUT: "Gateway terlalu lama mengirim header respons",
+      UND_ERR_SOCKET: "Koneksi socket ke gateway terputus",
+      OTHER: null,
+    }[transportCode ?? "OTHER"];
+    const transportDetail = transportHint ? ` (${transportHint})` : "";
+    if (error.code === "PROVIDER_TRANSPORT_ERROR") {
+      const phase =
+        error.diagnostics?.phase === "response_body"
+          ? "saat membaca isi respons"
+          : error.diagnostics?.phase === "request_headers"
+            ? "sebelum header respons diterima"
+            : "saat berkomunikasi dengan gateway";
+      const elapsedMs = error.diagnostics?.elapsedMs;
+      const elapsed =
+        elapsedMs === undefined
+          ? ""
+          : ` setelah ${Math.round(elapsedMs / 100) / 10} detik`;
+      return {
+        code: error.code,
+        summary: remoteOutcomeUnknown
+          ? `Koneksi ke Senopati terputus ${phase}${elapsed}${transportDetail}. Gateway mungkin sudah menerima permintaan; periksa status Run sebelum mengirim ulang.`
+          : `Koneksi ke Senopati terputus ${phase}${elapsed}${transportDetail}. Periksa koneksi dan status gateway, lalu coba lagi.`,
+      };
+    }
+    if (error.diagnostics?.phase === "request_headers") {
+      const elapsedMs = error.diagnostics.elapsedMs;
+      const elapsed =
+        elapsedMs === undefined
+          ? ""
+          : ` setelah ${Math.round(elapsedMs / 100) / 10} detik`;
+      return {
+        code: error.code,
+        summary: remoteOutcomeUnknown
+          ? `Request ke gateway Senopati terputus sebelum header respons HTTP diterima${elapsed}. Gateway mungkin sudah menerima request; periksa status Run sebelum mengirim ulang.`
+          : `Request ke gateway Senopati berhenti sebelum header respons HTTP diterima${elapsed}. Periksa koneksi atau kapasitas gateway, lalu coba lagi.`,
+      };
+    }
+    const status = error.diagnostics?.responseStatus;
+    if (status !== undefined && status >= 400) {
+      const elapsedMs = error.diagnostics?.elapsedMs;
+      if (status === 504) {
+        const elapsed =
+          elapsedMs === undefined
+            ? ""
+            : ` setelah ${Math.round(elapsedMs / 100) / 10} detik`;
+        return {
+          code: error.code,
+          summary: remoteOutcomeUnknown
+            ? `Gateway Senopati mengembalikan HTTP 504${elapsed}. Hasil pemrosesan request belum diketahui; periksa status Run sebelum mengirim ulang.`
+            : `Gateway Senopati mengembalikan HTTP 504${elapsed}. Gateway menghentikan request sebelum jawaban selesai; coba lagi nanti atau periksa kapasitas gateway.`,
+        };
+      }
+      if (status !== undefined) {
+        return {
+          code: error.code,
+          summary: remoteOutcomeUnknown
+            ? `Gateway Senopati mengembalikan HTTP ${status}. Hasil pemrosesan request belum diketahui; periksa status Run sebelum mengirim ulang.`
+            : `Gateway Senopati mengembalikan HTTP ${status}. Periksa status provider, lalu coba lagi.`,
+        };
+      }
+    }
+    if (error.diagnostics?.outputTruncated) {
+      return {
+        code: error.code,
+        summary:
+          "Jawaban Senopati terpotong pada batas token. PromptLab menolaknya agar keputusan parsial tidak diproses; coba lagi dengan permintaan yang lebih ringkas.",
+      };
+    }
+    if (error.diagnostics?.outputEmpty) {
+      return {
+        code: error.code,
+        summary:
+          "Senopati merespons tanpa teks jawaban. PromptLab menolak respons kosong; coba lagi atau periksa model Senopati di Pengaturan.",
+      };
+    }
     const summary = {
       AUTH_REQUIRED:
         "Koneksi Senopati ditolak. Periksa status koneksi Senopati di Pengaturan, lalu coba lagi.",
       PROVIDER_HTTP_ERROR:
         "Senopati tidak dapat dihubungi. Periksa koneksi dan status provider, lalu coba lagi.",
+      PROVIDER_TRANSPORT_ERROR:
+        "Koneksi ke Senopati terputus sebelum header respons diterima. Gateway mungkin sudah menerima permintaan; periksa status Run sebelum mengirim ulang.",
       PROVIDER_RESPONSE_INVALID:
         "Balasan Senopati tidak dapat dibaca. Coba lagi; jika berulang, periksa model Senopati di Pengaturan.",
       PROVIDER_TIMEOUT:
@@ -2105,9 +2200,11 @@ async function executeRun(raw: unknown): Promise<void> {
             throw new Error("WORKSPACE_SOURCE_MANIFEST_MISSING");
           }
           const routeReason = targetSourceRetrievalInProgress
-            ? "workspace_target_preflight"
+            ? retrievalRouteReason?.startsWith("auto_graph_unavailable")
+              ? retrievalRouteReason
+              : "workspace_target_preflight"
             : autoRetrieval
-              ? (retrievalRouteReason ?? "senopati_selected_lexical")
+              ? (retrievalRouteReason ?? "senopati_selected_hybrid")
               : null;
           const retrievalAttempts = await retrieveWorkspaceTargetSourceContext({
             db,
@@ -2583,9 +2680,12 @@ async function executeRun(raw: unknown): Promise<void> {
           }
         };
       }
+      const workspaceChatGenerationPolicy =
+        workspaceChatGenerationPolicyForPrompt(prompt.text);
       const campusChat = new CampusChatProvider({
         apiKey: process.env.PROMPTLAB_CAMPUS_API_KEY!.trim(),
         timeoutMs: campusOptimizerTimeoutMsFromEnvironment(process.env),
+        disableThinking: workspaceChatGenerationPolicy.disableThinking,
       });
       if (!targetConfiguration) {
         throw new Error("WORKSPACE_CHAT_TARGET_UNAVAILABLE");
@@ -2657,7 +2757,29 @@ async function executeRun(raw: unknown): Promise<void> {
             return;
           }
           const { type, ...payload } = event;
-          await appendWorkspaceChatEvent(type, payload);
+          await appendWorkspaceChatEvent(type, {
+            ...payload,
+            ...(type === "agent.action"
+              ? {
+                  phase: event.clarificationRequired
+                    ? "clarification_required"
+                    : "decision",
+                  decisionOutcome: event.decisionOutcome,
+                  provider: "campus_gateway",
+                  purpose: "optimizer",
+                  model: run.requestedModel,
+                }
+              : {}),
+            ...(event.toolName === "call_codex_target" &&
+            (type === "tool.started" || type === "tool.completed") &&
+            workspaceTargetRuntime
+              ? {
+                  provider: "codex_app_server",
+                  purpose: "target",
+                  model: workspaceTargetRuntime.resolvedModel,
+                }
+              : {}),
+          });
         },
         planner: async (context) => {
           assertRunActive(context.signal);
@@ -2698,6 +2820,17 @@ async function executeRun(raw: unknown): Promise<void> {
             purpose: "optimizer",
             model: run.requestedModel,
             modelCall: callNumber,
+            turn: context.turn,
+            analysisInput: {
+              requestCharacters: requestText.length,
+              requestFingerprint: sha256Text(requestText),
+              promptCharacters: prompt.text.length,
+              selectedSourceCount: selectedSourceIds.length,
+              retrievalStrategy: requestedRetrievalStrategy,
+              targetAvailable: targetConfiguration !== null,
+              targetModel: workspaceTargetRuntime?.resolvedModel ?? null,
+              priorToolResults: context.priorToolSummaries,
+            },
           });
           const started = performance.now();
           const response = await completeWorkspaceChatDecision({
@@ -2705,7 +2838,7 @@ async function executeRun(raw: unknown): Promise<void> {
             request: {
               model: run.requestedModel,
               purpose: "optimizer",
-              maxOutputTokens: 2_048,
+              maxOutputTokens: workspaceChatGenerationPolicy.maxOutputTokens,
               messages: [
                 {
                   role: "system",
@@ -3253,6 +3386,7 @@ async function executeRun(raw: unknown): Promise<void> {
       const invokeOptimizer = async (
         text: string,
         signal: AbortSignal,
+        analysisInput?: Record<string, unknown>,
       ): Promise<OptimizationInvocation> => {
         if (optimizerCallCount >= 5)
           throw new Error("OPTIMIZATION_MODEL_CALL_BUDGET_EXCEEDED");
@@ -3268,6 +3402,10 @@ async function executeRun(raw: unknown): Promise<void> {
           provider: "campus_gateway",
           model: optimizerModel,
           modelCall: callNumber,
+          analysisInput: analysisInput ?? {
+            requestCharacters: text.length,
+            requestFingerprint: sha256Text(text),
+          },
         });
         const started = performance.now();
         const result = await withProviderInferenceReservation(
@@ -3561,7 +3699,6 @@ async function executeRun(raw: unknown): Promise<void> {
             strategy: optimizationRetrievalStrategy,
             sourceIds: optimizationSourceIds,
             snapshotId: graphSnapshotId,
-            requireCampusPermission: true,
             contextBudgetTokens:
               GRAPH_RETRIEVAL_HARD_BOUNDS.maxEstimatedContextTokens,
           },
@@ -3616,7 +3753,6 @@ async function executeRun(raw: unknown): Promise<void> {
                   and(
                     eq(schema.documents.projectId, projectId),
                     inArray(schema.documents.id, [...selectedSourceIds]),
-                    eq(schema.documents.trust, "campus_indexer_allowed"),
                     isNull(schema.documents.deletedAt),
                     eq(schema.documentVersions.eligible, true),
                   ),
@@ -3636,7 +3772,6 @@ async function executeRun(raw: unknown): Promise<void> {
                 strategy,
                 sourceIds: [...sourceIds],
                 snapshotId,
-                requireCampusPermission: true,
                 bounds: {
                   maxEstimatedContextTokens:
                     GRAPH_RETRIEVAL_HARD_BOUNDS.maxEstimatedContextTokens,
@@ -3665,7 +3800,6 @@ async function executeRun(raw: unknown): Promise<void> {
             strategy: optimizationRetrievalStrategy,
             sourceIds: [...sourceIds],
             snapshotId,
-            requireCampusPermission: true,
             runId,
           });
           for (const evidence of retrieval.evidence) {
@@ -3720,12 +3854,20 @@ async function executeRun(raw: unknown): Promise<void> {
               model: optimizerModel,
               turn: event.turn,
               selectedTools: event.selectedTools ?? [],
+              decisionOutcome: event.decisionOutcome,
               summary: event.summary,
             });
           } else if (event.type === "tool.started") {
             await appendOptimizationEvent("tool.started", {
               turn: event.turn,
               toolName: event.toolName,
+              ...(event.toolName === "call_codex_target"
+                ? {
+                    provider: "codex_app_server",
+                    purpose: "target",
+                    model: codexRuntime?.resolvedModel ?? run.requestedModel,
+                  }
+                : {}),
               ...(event.toolName === "search_knowledge"
                 ? { retrievalStrategy: optimizationRetrievalStrategy }
                 : {}),
@@ -3736,6 +3878,13 @@ async function executeRun(raw: unknown): Promise<void> {
             await appendOptimizationEvent("tool.completed", {
               turn: event.turn,
               toolName: event.toolName,
+              ...(event.toolName === "call_codex_target"
+                ? {
+                    provider: "codex_app_server",
+                    purpose: "target",
+                    model: codexRuntime?.resolvedModel ?? run.requestedModel,
+                  }
+                : {}),
               ...(event.toolName === "search_knowledge"
                 ? { retrievalStrategy: optimizationRetrievalStrategy }
                 : {}),
@@ -4003,7 +4152,6 @@ async function executeRun(raw: unknown): Promise<void> {
               and(
                 eq(schema.documents.projectId, projectId),
                 inArray(schema.documents.id, [...selectedSourceIds]),
-                eq(schema.documents.trust, "campus_indexer_allowed"),
                 isNull(schema.documents.deletedAt),
                 eq(schema.documentVersions.eligible, true),
               ),
@@ -4021,7 +4169,6 @@ async function executeRun(raw: unknown): Promise<void> {
             strategy,
             sourceIds: [...sourceIds],
             snapshotId,
-            requireCampusPermission: true,
             runId,
           });
         },
@@ -4663,6 +4810,10 @@ async function executeRun(raw: unknown): Promise<void> {
       classifyRemoteOutcomeUnknown({
         code,
         remoteRequestActive: failedRemoteRequest !== null,
+        providerHttpStatus:
+          error instanceof ProviderRequestError
+            ? error.diagnostics?.responseStatus
+            : undefined,
         trustedCodexOutcomeMayBeUnknown:
           error instanceof CodexProviderError
             ? error.outcomeMayBeUnknown
@@ -4674,7 +4825,10 @@ async function executeRun(raw: unknown): Promise<void> {
       ? failedRemoteRequest?.provider === "campus_gateway"
         ? failedRemoteRequest.stage === "file_draft_task_optimization"
           ? "Optimasi teks tugas oleh Senopati belum dipastikan. Isi file tidak dikirim ke Senopati; periksa status run sebelum mencoba lagi."
-          : "Jawaban Senopati belum diterima sebelum batas waktu; hasil permintaan belum diketahui. Periksa status Run sebelum mencoba lagi."
+          : ((error instanceof ProviderRequestError
+              ? promptOptimizationFailureDetails(error, true)?.summary
+              : null) ??
+            "Jawaban Senopati belum diterima sebelum batas waktu; hasil permintaan belum diketahui. Periksa status Run sebelum mencoba lagi.")
         : failedRemoteRequest?.stage.startsWith("controlled_")
           ? "Koneksi Codex terputus selama evaluasi batch; hasil target yang sedang berjalan belum diketahui. Periksa status Run sebelum mencoba lagi."
           : failedRemoteRequest?.stage === "codex_baseline_test"
@@ -4715,6 +4869,7 @@ async function executeRun(raw: unknown): Promise<void> {
                 : (optimizationFailure?.summary ??
                   `Provider mengembalikan error ${code}.`);
     const status = remoteOutcomeUnknown ? "interrupted_unknown" : "failed";
+    const providerDiagnostics = safeProviderFailureDiagnostics(error);
     const failureTransition = await db.transaction(async (tx) => {
       const [lockedRun] = await tx
         .select({ status: schema.runs.status })
@@ -4779,6 +4934,7 @@ async function executeRun(raw: unknown): Promise<void> {
             remoteOutcomeUnknown,
             failedProvider: failedRemoteRequest?.provider ?? null,
             failedStage: failedRemoteRequest?.stage ?? null,
+            ...(providerDiagnostics ? { providerDiagnostics } : {}),
           },
         });
       });
@@ -4908,6 +5064,316 @@ const LIVE_QUEUE_STATES = new Set([
   "waiting-children",
   "prioritized",
 ]);
+
+const KNOWLEDGE_MAINTENANCE_SOURCE_BATCH_SIZE = 500;
+let knowledgeMaintenanceInProgress = false;
+let knowledgeEmbeddingBackfillFinished = false;
+
+function activeKnowledgeSourceQuery() {
+  return db
+    .select({
+      projectId: schema.documents.projectId,
+      sourceId: schema.documents.id,
+      documentVersionId: schema.documentVersions.id,
+    })
+    .from(schema.documents)
+    .innerJoin(
+      schema.documentVersions,
+      and(
+        eq(schema.documentVersions.projectId, schema.documents.projectId),
+        eq(schema.documentVersions.documentId, schema.documents.id),
+        eq(schema.documentVersions.id, schema.documents.activeVersionId),
+      ),
+    )
+    .where(
+      and(
+        isNull(schema.documents.deletedAt),
+        eq(schema.documentVersions.eligible, true),
+        isNull(schema.documentVersions.retiredAt),
+      ),
+    )
+    .orderBy(asc(schema.documents.projectId), asc(schema.documents.id));
+}
+
+async function knowledgeEmbeddingEventIsLive(
+  eventId: string,
+  state: string,
+): Promise<boolean> {
+  if (state === "pending" || state === "dispatching") return true;
+  if (state !== "delivered") return false;
+  try {
+    const job = await queue.getJob(eventId);
+    return Boolean(job && LIVE_QUEUE_STATES.has(await job.getState()));
+  } catch {
+    // Treat queue inspection failures conservatively to avoid duplicate egress.
+    return true;
+  }
+}
+
+async function enqueueKnowledgeEmbeddingBackfill(
+  source: { projectId: string; sourceId: string; documentVersionId: string },
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [project] = await tx
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, source.projectId))
+      .limit(1)
+      .for("update");
+    if (!project) return false;
+    const [existing] = await tx
+      .select({
+        id: schema.outbox.id,
+        state: schema.outbox.state,
+      })
+      .from(schema.outbox)
+      .where(
+        and(
+          eq(schema.outbox.projectId, source.projectId),
+          eq(schema.outbox.aggregateId, source.sourceId),
+          eq(schema.outbox.eventType, "knowledge.embedding.enqueue"),
+          sql`${schema.outbox.payload}->>'documentVersionId' = ${source.documentVersionId}`,
+        ),
+      )
+      .orderBy(desc(schema.outbox.createdAt))
+      .limit(1);
+    if (
+      existing &&
+      (await knowledgeEmbeddingEventIsLive(existing.id, existing.state))
+    ) {
+      return false;
+    }
+    await tx.insert(schema.outbox).values({
+      projectId: source.projectId,
+      aggregateId: source.sourceId,
+      eventType: "knowledge.embedding.enqueue",
+      payload: {
+        projectId: source.projectId,
+        sourceId: source.sourceId,
+        documentVersionId: source.documentVersionId,
+      },
+    });
+    return true;
+  });
+}
+
+async function backfillKnowledgeEmbeddings(): Promise<number> {
+  if (!campusEmbeddingRuntime.provider || !campusEmbeddingRuntime.requestedModel)
+    return 0;
+
+  const rows = await activeKnowledgeSourceQuery();
+  const sourcesByProject = new Map<
+    string,
+    Array<{ projectId: string; sourceId: string; documentVersionId: string }>
+  >();
+  for (const row of rows) {
+    const sources = sourcesByProject.get(row.projectId) ?? [];
+    sources.push(row);
+    sourcesByProject.set(row.projectId, sources);
+  }
+
+  let enqueued = 0;
+  for (const [projectId, sources] of sourcesByProject) {
+    for (
+      let offset = 0;
+      offset < sources.length;
+      offset += KNOWLEDGE_MAINTENANCE_SOURCE_BATCH_SIZE
+    ) {
+      const batch = sources.slice(
+        offset,
+        offset + KNOWLEDGE_MAINTENANCE_SOURCE_BATCH_SIZE,
+      );
+      const readiness = await getKnowledgeEmbeddingIndexReadiness(db, {
+        projectId,
+        selectedSourceIds: batch.map((source) => source.sourceId),
+      });
+      const readinessBySource = new Map(
+        readiness.map((source) => [source.sourceId, source.status]),
+      );
+      for (const source of batch) {
+        if (readinessBySource.get(source.sourceId) === "ready") continue;
+        if (await enqueueKnowledgeEmbeddingBackfill(source)) enqueued += 1;
+      }
+    }
+  }
+  return enqueued;
+}
+
+async function scheduleAutomaticGraphBuild(projectId: string): Promise<void> {
+  const sources = await db
+    .select({ id: schema.documents.id })
+    .from(schema.documents)
+    .innerJoin(
+      schema.documentVersions,
+      and(
+        eq(schema.documentVersions.projectId, schema.documents.projectId),
+        eq(schema.documentVersions.documentId, schema.documents.id),
+        eq(schema.documentVersions.id, schema.documents.activeVersionId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.documents.projectId, projectId),
+        isNull(schema.documents.deletedAt),
+        eq(schema.documentVersions.eligible, true),
+        isNull(schema.documentVersions.retiredAt),
+      ),
+    )
+    .orderBy(asc(schema.documents.id));
+  const sourceIds = sources.map((source) => source.id);
+  if (!sourceIds.length) return;
+
+  const campus = campusProviderFromEnvironment();
+  const apiKey = process.env.PROMPTLAB_CAMPUS_API_KEY?.trim() || null;
+  if (!apiKey || !campus?.requestedModel) return;
+  const [connection] = await db
+    .select({
+      id: schema.providerConnections.id,
+      status: schema.providerConnections.connectionStatus,
+      model: schema.providerConnections.requestedModel,
+    })
+    .from(schema.providerConnections)
+    .where(
+      and(
+        eq(schema.providerConnections.projectId, projectId),
+        eq(schema.providerConnections.provider, "campus_gateway"),
+        eq(schema.providerConnections.role, "optimizer"),
+      ),
+    )
+    .limit(1);
+  if (
+    !connection ||
+    connection.status !== "verified" ||
+    connection.model !== campus.requestedModel
+  ) {
+    return;
+  }
+
+  const preview = await previewGraphBuild(
+    db,
+    projectId,
+    { sourceIds, requestedModel: campus.requestedModel },
+    { keyConfigured: true, environmentModel: campus.requestedModel },
+  );
+  if (!preview.providerReady || !preview.requestedModel) return;
+  const activeSnapshot = await getActiveGraphSnapshot(db, projectId);
+  const activeSnapshotSourceIds = Array.isArray(activeSnapshot?.sourceManifest)
+    ? activeSnapshot.sourceManifest.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const documentId = (item as Record<string, unknown>).documentId;
+        return typeof documentId === "string" ? [documentId] : [];
+      })
+    : [];
+  const activeSnapshotCoversAllSources =
+    activeSnapshotSourceIds.length === sourceIds.length &&
+    sourceIds.every((sourceId) => activeSnapshotSourceIds.includes(sourceId));
+  if (
+    activeSnapshot?.state === "active" &&
+    activeSnapshotCoversAllSources &&
+    (await graphSnapshotIsCurrent(db, projectId, activeSnapshot.sourceManifest))
+  ) {
+    return;
+  }
+  const recentBuilds = await db
+    .select({
+      state: schema.graphBuilds.state,
+      requestedAt: schema.graphBuilds.requestedAt,
+      finishedAt: schema.graphBuilds.finishedAt,
+    })
+    .from(schema.graphBuilds)
+    .where(
+      and(
+        eq(schema.graphBuilds.projectId, projectId),
+        eq(schema.graphBuilds.sourceManifestHash, preview.sourceManifestHash),
+      ),
+    )
+    .orderBy(desc(schema.graphBuilds.requestedAt))
+    .limit(100);
+  const latestBuild = recentBuilds[0];
+  if (
+    latestBuild &&
+    ["queued", "extracting", "validating", "ready_to_activate"].includes(
+      latestBuild.state,
+    )
+  ) {
+    return;
+  }
+  if (
+    latestBuild &&
+    ["failed", "partial", "cancelled"].includes(latestBuild.state)
+  ) {
+    const failureCount = recentBuilds.filter((build) =>
+      ["failed", "partial", "cancelled"].includes(build.state),
+    ).length;
+    const retryDelayMs = Math.min(
+      2 * 60 * 1_000,
+      15 * 1_000 * 2 ** Math.min(Math.max(failureCount - 1, 0), 4),
+    );
+    const failedAt = latestBuild.finishedAt ?? latestBuild.requestedAt;
+    if (Date.now() - failedAt.getTime() < retryDelayMs) return;
+  }
+  const result = await enqueueGraphBuild(db, {
+    projectId,
+    sourceIds,
+    requestedModel: preview.requestedModel,
+    maxModelCalls: preview.maxModelCalls,
+    idempotencyKey: `automatic-graphrag:${preview.sourceManifestHash}:${Date.now()}`,
+    providerConnectionId: connection.id,
+  });
+  if (result.created) {
+    log("automatic_graph_build_enqueued", {
+      projectId,
+      buildId: result.buildId,
+      sourceCount: preview.sourceCount,
+      chunkCount: preview.chunkCount,
+    });
+  }
+}
+
+async function scheduleAutomaticGraphBuilds(): Promise<void> {
+  const rows = await activeKnowledgeSourceQuery();
+  const projectIds = [...new Set(rows.map((row) => row.projectId))];
+  for (const projectId of projectIds) {
+    try {
+      await scheduleAutomaticGraphBuild(projectId);
+    } catch (error) {
+      log("automatic_graph_build_schedule_failed", {
+        projectId,
+        errorCode:
+          error && typeof error === "object" && "code" in error &&
+          typeof error.code === "string"
+            ? error.code
+            : error instanceof Error
+              ? error.name
+              : "UNKNOWN",
+      });
+    }
+  }
+}
+
+async function runKnowledgeMaintenance(): Promise<void> {
+  if (knowledgeMaintenanceInProgress) return;
+  knowledgeMaintenanceInProgress = true;
+  try {
+    if (
+      !knowledgeEmbeddingBackfillFinished &&
+      campusEmbeddingRuntime.provider &&
+      campusEmbeddingRuntime.requestedModel
+    ) {
+      const enqueued = await backfillKnowledgeEmbeddings();
+      knowledgeEmbeddingBackfillFinished = true;
+      log("knowledge_embedding_backfill_finished", { enqueued });
+    }
+    await scheduleAutomaticGraphBuilds();
+  } catch (error) {
+    log("knowledge_maintenance_failed", {
+      errorCode: error instanceof Error ? error.name : "UNKNOWN",
+    });
+  } finally {
+    knowledgeMaintenanceInProgress = false;
+  }
+}
+
 let runRecoveryInProgress = false;
 
 async function recoverOrphanedRunningRuns(): Promise<void> {
@@ -4953,6 +5419,10 @@ async function recoverOrphanedRunningRuns(): Promise<void> {
 
     for (const run of candidates) {
       const jobIds = jobIdsByRun.get(run.id) ?? [];
+      // Only recover runs owned by the normal run.execute queue. Graph builds
+      // create their own graph.build.execute jobs and do not have run.enqueue
+      // events, so treating an empty list as an orphan would interrupt them.
+      if (!jobIds.length) continue;
       let hasLiveJob = false;
       for (const jobId of jobIds) {
         const job = await queue.getJob(jobId);
@@ -5004,6 +5474,20 @@ const worker = new Worker(
         requestedModel: campusEmbeddingRuntime.requestedModel,
         unavailableReason: campusEmbeddingRuntime.unavailableReason,
       });
+      try {
+        await scheduleAutomaticGraphBuild(outcome.projectId);
+      } catch (error) {
+        log("automatic_graph_build_schedule_failed", {
+          projectId: outcome.projectId,
+          errorCode:
+            error && typeof error === "object" && "code" in error &&
+            typeof error.code === "string"
+              ? error.code
+              : error instanceof Error
+                ? error.name
+                : "UNKNOWN",
+        });
+      }
       const maxAttempts = job.opts.attempts ?? 1;
       const retryDecision = knowledgeEmbeddingRetryDecision(
         outcome,
@@ -5046,11 +5530,13 @@ const worker = new Worker(
       return outcome;
     }
     if (job.name === "graph.build.execute") {
-      const campus = campusProviderFromEnvironment();
+      const campus = campusConfigurationFromEnvironment();
       return executeGraphBuild(db, job.data, {
-        adapter: campus?.provider ?? null,
-        apiKey: process.env.PROMPTLAB_CAMPUS_API_KEY?.trim() || null,
-        keyConfigured: Boolean(process.env.PROMPTLAB_CAMPUS_API_KEY?.trim()),
+        adapter: campus
+          ? new CampusChatProvider({ ...campus, disableThinking: true })
+          : null,
+        apiKey: campus?.apiKey ?? null,
+        keyConfigured: Boolean(campus?.apiKey),
         configuredModel: campus?.requestedModel ?? null,
       });
     }
@@ -5100,6 +5586,10 @@ const dispatchTimer = setInterval(() => {
   void dispatchOutboxBatch();
 }, 1_000);
 void dispatchOutboxBatch();
+const knowledgeMaintenanceTimer = setInterval(() => {
+  void runKnowledgeMaintenance();
+}, 30_000);
+void runKnowledgeMaintenance();
 log("worker_started", {
   queue: queueName,
   concurrency: 2,
@@ -5111,6 +5601,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(dispatchTimer);
+  clearInterval(knowledgeMaintenanceTimer);
   clearInterval(runRecoveryTimer);
   log("worker_shutdown_started", { signal });
   await new Promise<void>((resolve) => readinessServer.close(() => resolve()));

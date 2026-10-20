@@ -224,13 +224,6 @@ async function loadCurrentSourceManifest(
         409,
       );
     }
-    if (row.permission !== "campus_indexer_allowed") {
-      throw new GraphifyImportError(
-        "SOURCE_PERMISSION_REQUIRED",
-        "Every selected source must be permitted by PromptLab's graph retrieval policy.",
-        409,
-      );
-    }
   }
 
   const versionIds = rows.map((row) => row.documentVersionId);
@@ -249,8 +242,7 @@ async function loadCurrentSourceManifest(
         inArray(schema.chunks.documentVersionId, versionIds),
       ),
     )
-    .orderBy(asc(schema.chunks.documentVersionId), asc(schema.chunks.ordinal))
-    .limit(121);
+    .orderBy(asc(schema.chunks.documentVersionId), asc(schema.chunks.ordinal));
   const structuralFingerprint = await getActiveKnowledgeMarkdownFingerprint(
     tx,
     projectId,
@@ -281,12 +273,6 @@ async function loadCurrentSourceManifest(
       chunks,
     } satisfies SourceManifestEntry;
   });
-  if (manifest.reduce((count, entry) => count + entry.chunks.length, 0) > 120) {
-    throw new GraphifyImportError(
-      "SOURCE_CHUNK_LIMIT",
-      "Graphify import source selection exceeds 120 imported chunks.",
-    );
-  }
   const chunksById = new Map<string, BoundChunk>();
   for (const chunk of chunkRows) {
     const owner = rows.find(

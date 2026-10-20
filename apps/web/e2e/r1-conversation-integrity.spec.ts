@@ -58,6 +58,7 @@ async function installOfflineWorkspaceFixtures(
   const runStatuses = new Map<string, string>();
   const runEventSequences = new Map<string, number>();
   const runByIdempotencyKey = new Map<string, Record<string, unknown>>();
+  const storedConversations: Array<Record<string, unknown>> = [];
   let droppedRunResponse = false;
   let promptVersion = 0;
 
@@ -101,18 +102,22 @@ async function installOfflineWorkspaceFixtures(
               },
             ]
           : [];
+      const senopatiOptimizer =
+        requestedProjectId && fixtures.state.projectScopedCodexVerified
+          ? [
+              {
+                provider: "campus_gateway",
+                role: "optimizer",
+                status: "verified",
+                requestedModel: "offline-fixture-model",
+              },
+            ]
+          : [];
       return jsonResponse(route, {
         providers:
           fixtures.state.mode === "disconnected"
             ? []
-            : [
-                {
-                  provider: "campus_gateway",
-                  role: "auxiliary",
-                  status: "verified",
-                  requestedModel: "offline-fixture-model",
-                },
-              ].concat(codexTarget),
+            : senopatiOptimizer.concat(codexTarget),
         codexModels: codexTarget.length
           ? [{ id: "gpt-6-luna", displayName: "GPT-6-Luna" }]
           : [],
@@ -120,6 +125,40 @@ async function installOfflineWorkspaceFixtures(
     }
 
     const projectPath = `/api/projects/${projectId}`;
+    const conversationCollectionPath = `${projectPath}/workspace/conversations`;
+    if (path === conversationCollectionPath && method === "GET") {
+      return jsonResponse(route, { conversations: storedConversations });
+    }
+    if (path === conversationCollectionPath && method === "PUT") {
+      const body = request.postDataJSON() as {
+        conversations?: Array<Record<string, unknown>>;
+      };
+      storedConversations.splice(
+        0,
+        storedConversations.length,
+        ...(body.conversations ?? []),
+      );
+      return jsonResponse(route, { saved: storedConversations.length });
+    }
+    const conversationMatch = path.match(
+      new RegExp(`^${conversationCollectionPath}/([^/]+)$`),
+    );
+    if (conversationMatch && method === "PUT") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      const index = storedConversations.findIndex(
+        (conversation) => conversation.id === conversationMatch[1],
+      );
+      if (index < 0) storedConversations.unshift(body);
+      else storedConversations[index] = body;
+      return jsonResponse(route, { saved: true });
+    }
+    if (conversationMatch && method === "DELETE") {
+      const index = storedConversations.findIndex(
+        (conversation) => conversation.id === conversationMatch[1],
+      );
+      if (index >= 0) storedConversations.splice(index, 1);
+      return jsonResponse(route, { deleted: true });
+    }
     if (path === `${projectPath}/knowledge` && method === "GET") {
       fixtures.knowledgeRequests += 1;
       if (
@@ -151,6 +190,30 @@ async function installOfflineWorkspaceFixtures(
         grantDurationSeconds: 900,
         writeGrantDurationSeconds: null,
       });
+    }
+
+    if (path === `${projectPath}/workspace/prompts` && method === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      fixtures.promptRequests.push(body);
+      promptVersion += 1;
+      return jsonResponse(
+        route,
+        {
+          prompt: {
+            id:
+              typeof body.promptId === "string"
+                ? body.promptId
+                : "offline-prompt",
+            name:
+              typeof body.name === "string" ? body.name : "Percakapan fixture",
+            versionId: `offline-prompt-version-${promptVersion}`,
+            version: promptVersion,
+            text: typeof body.text === "string" ? body.text : "",
+            currentVersionId: null,
+          },
+        },
+        201,
+      );
     }
 
     if (path === `${projectPath}/runs` && method === "GET") {
@@ -293,7 +356,9 @@ test("loads provider status for the selected project", async ({ page }) => {
 test("serializes follow-ups, offers cancellation, and keeps one new conversation action", async ({
   page,
 }) => {
-  const fixtures = await installOfflineWorkspaceFixtures(page);
+  const fixtures = await installOfflineWorkspaceFixtures(page, {
+    projectScopedCodexVerified: true,
+  });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/workspace");
 
@@ -305,7 +370,7 @@ test("serializes follow-ups, offers cancellation, and keeps one new conversation
   ).toHaveCount(1);
   await expect(
     page.getByRole("complementary", {
-      name: "Riwayat percakapan dan run",
+      name: "Riwayat percakapan",
     }),
   ).toBeVisible();
 
@@ -315,7 +380,7 @@ test("serializes follow-ups, offers cancellation, and keeps one new conversation
   await sendButton.click();
   await expect(
     page.getByText(
-      /follow-up ditahan supaya jawaban ini tetap masuk ke konteks/i,
+      /follow-up ditahan agar konteks percakapan tetap berurutan/i,
     ),
   ).toBeVisible();
   await expect(sendButton).toBeDisabled();
@@ -325,20 +390,21 @@ test("serializes follow-ups, offers cancellation, and keeps one new conversation
   await page.getByRole("button", { name: "Batalkan run" }).click();
   await expect(
     page.getByText(
-      /follow-up ditahan supaya jawaban ini tetap masuk ke konteks/i,
+      /follow-up ditahan agar konteks percakapan tetap berurutan/i,
     ),
   ).toHaveCount(0);
   await expect(page.getByText("Dibatalkan", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("Pertanyaan lanjutan fixture.");
   await expect(sendButton).toBeEnabled();
   await sendButton.click();
   await expect.poll(() => fixtures.runRequests.length).toBe(2);
   expect(fixtures.promptRequests).toHaveLength(2);
   expect(fixtures.runRequests[0]?.retrieval).toEqual({
-    strategy: "lexical",
+    strategy: "auto",
     sourceIds: [],
   });
   expect(fixtures.runRequests[1]?.retrieval).toEqual({
-    strategy: "lexical",
+    strategy: "auto",
     sourceIds: [],
   });
 
@@ -402,7 +468,7 @@ test("serializes follow-ups, offers cancellation, and keeps one new conversation
   ).toHaveCount(1);
   await expect(
     page.getByRole("complementary", {
-      name: "Riwayat percakapan dan run",
+      name: "Riwayat percakapan",
     }),
   ).toBeVisible();
   expect(fixtures.unexpectedApiRequests).toEqual([]);
@@ -412,6 +478,7 @@ test("keeps an uncertain run creation blocked until the same idempotent run is f
   page,
 }) => {
   const fixtures = await installOfflineWorkspaceFixtures(page, {
+    projectScopedCodexVerified: true,
     dropFirstRunResponse: true,
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -447,7 +514,7 @@ test("keeps an uncertain run creation blocked until the same idempotent run is f
   await expect(reconcile).toHaveCount(0);
   await expect(
     page.getByText(
-      /follow-up ditahan supaya jawaban ini tetap masuk ke konteks/i,
+      /follow-up ditahan agar konteks percakapan tetap berurutan/i,
     ),
   ).toBeVisible();
   expect(fixtures.runRequests).toHaveLength(1);
@@ -458,6 +525,7 @@ test("blocks source egress after a failed consent refresh and allows an explicit
   page,
 }) => {
   const fixtures = await installOfflineWorkspaceFixtures(page, {
+    projectScopedCodexVerified: true,
     knowledgeFailureOnRequest: 2,
     sourceRows: [
       {
@@ -477,13 +545,10 @@ test("blocks source egress after a failed consent refresh and allows an explicit
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/workspace");
 
-  const sourcePicker = page.locator("details").filter({
-    has: page.locator("summary", { hasText: "Sumber" }),
-  });
-  await sourcePicker.locator("summary").click();
+  await page.getByRole("button", { name: "Sumber" }).click();
   await page.getByRole("checkbox", { name: /Kebijakan offline/ }).check();
   await expect(
-    page.getByText(/sumber hanya dikirim ke Gateway kampus/i),
+    page.getByText(/sumber pilihan akan dipakai setelah izin diverifikasi/i),
   ).toBeVisible();
 
   const composer = page.getByRole("textbox", { name: "Pesan" });
@@ -509,7 +574,7 @@ test("blocks source egress after a failed consent refresh and allows an explicit
   await expect.poll(() => fixtures.runRequests.length).toBe(1);
   expect(fixtures.knowledgeRequests).toBe(2);
   expect(fixtures.runRequests[0]?.retrieval).toEqual({
-    strategy: "lexical",
+    strategy: "auto",
     sourceIds: [],
   });
   expect(fixtures.unexpectedApiRequests).toEqual([]);
@@ -527,6 +592,7 @@ test("shows honest empty-project and disconnected-provider states", async ({
     page.getByRole("heading", { level: 3, name: "Pilih proyek untuk mulai" }),
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Pesan" })).toBeDisabled();
+  await page.getByRole("button", { name: "Riwayat" }).click();
   await expect(
     page.getByRole("button", { name: "Percakapan baru", exact: true }),
   ).toBeDisabled();
@@ -534,16 +600,15 @@ test("shows honest empty-project and disconnected-provider states", async ({
   fixtures.state.mode = "disconnected";
   await page.reload();
   await expect(page.locator("#active-project")).toHaveValue(projectId);
-  await expect(page.getByText("Provider belum tersedia")).toBeVisible();
   await expect(
-    page.getByText(/belum ada provider chat yang terverifikasi/i),
+    page
+      .getByRole("status")
+      .getByText("Hubungkan Senopati dan Codex untuk mulai."),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Kirim pesan" }),
   ).toBeDisabled();
-  await expect(
-    page.getByRole("link", { name: "Buka Pengaturan provider" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Atur Senopati" })).toBeVisible();
   expect(fixtures.unexpectedApiRequests).toEqual([]);
 });
 
@@ -595,6 +660,7 @@ test("keeps the active conversation header inside narrow viewports", async ({
         header: rect(header),
         title: rect(title),
         status: rect(status),
+        compactHeader: viewportWidth <= 640,
       };
     });
 
@@ -606,10 +672,10 @@ test("keeps the active conversation header inside narrow viewports", async ({
       dimensions.header.right,
       `conversation header at ${width}px should fit the viewport: ${JSON.stringify(dimensions)}`,
     ).toBeLessThanOrEqual(dimensions.viewportWidth);
-    if (width <= 360) {
+    if (dimensions.compactHeader) {
       expect(
         dimensions.title.bottom,
-        `conversation title at ${width}px should stay above its status: ${JSON.stringify(dimensions)}`,
+        `conversation title at ${width}px should stay above its actions: ${JSON.stringify(dimensions)}`,
       ).toBeLessThanOrEqual(dimensions.status.top);
     } else {
       expect(
@@ -625,46 +691,7 @@ test("keeps the active conversation header inside narrow viewports", async ({
     fullPage: true,
     style: "nextjs-portal { display: none !important; }",
   });
-
-  await header
-    .locator(":scope > div")
-    .nth(1)
-    .locator("span")
-    .first()
-    .evaluate((badge) => {
-      badge.textContent = `Gateway kampus ${"statusfixture".repeat(48)} siap`;
-    });
-  const longStatusDimensions = await page.evaluate(() => {
-    const viewportWidth = document.documentElement.clientWidth;
-    const panel = document.querySelector<HTMLElement>(
-      '[data-testid="workspace-chat-panel"]',
-    );
-    const header = panel?.querySelector<HTMLElement>("header");
-    const title = header?.querySelector<HTMLElement>("h2");
-    const status = header?.children.item(1);
-    const badge = status?.firstElementChild;
-    if (!panel || !header || !title || !status || !badge) {
-      throw new Error("The active conversation header is incomplete.");
-    }
-    return {
-      viewportWidth,
-      documentWidth: document.documentElement.scrollWidth,
-      headerRight: Math.round(header.getBoundingClientRect().right),
-      titleRight: Math.round(title.getBoundingClientRect().right),
-      statusLeft: Math.round(status.getBoundingClientRect().left),
-      statusRight: Math.round(status.getBoundingClientRect().right),
-      badgeRight: Math.round(badge.getBoundingClientRect().right),
-    };
-  });
-  expect(
-    longStatusDimensions.documentWidth,
-    `a long provider status should wrap at 390px: ${JSON.stringify(longStatusDimensions)}`,
-  ).toBeLessThanOrEqual(longStatusDimensions.viewportWidth);
-  expect(longStatusDimensions.badgeRight).toBeLessThanOrEqual(
-    longStatusDimensions.headerRight,
-  );
-  expect(longStatusDimensions.titleRight).toBeLessThanOrEqual(
-    longStatusDimensions.statusLeft,
-  );
+  await expect(header.locator(".chatHeaderStatus")).toBeHidden();
+  await expect(header.getByRole("button", { name: "Konteks" })).toBeVisible();
   expect(fixtures.unexpectedApiRequests).toEqual([]);
 });

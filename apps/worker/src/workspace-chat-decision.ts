@@ -112,6 +112,32 @@ export function workspaceChatDecisionOutputInstructions(
   ].join("\n\n");
 }
 
+export interface WorkspaceChatGenerationPolicy {
+  disableThinking: boolean;
+  maxOutputTokens: number;
+}
+
+/** Uses a bounded fast path only for unambiguous pings and arithmetic expressions. */
+export function workspaceChatGenerationPolicyForPrompt(
+  prompt: string,
+): WorkspaceChatGenerationPolicy {
+  const normalized = prompt.normalize("NFKC").trim().toLocaleLowerCase("id-ID");
+  const isPing = /^(?:halo|hai|hi|hello|test|tes|ping)[.!?]*$/u.test(
+    normalized,
+  );
+  const isArithmeticExpression =
+    normalized.length <= 80 &&
+    /\d/u.test(normalized) &&
+    /[+*/^%=×÷-]/u.test(normalized) &&
+    /^[\d\s()+*/^%=.,×÷-]+$/u.test(normalized);
+  const useFastPath = isPing || isArithmeticExpression;
+
+  return {
+    disableThinking: useFastPath,
+    maxOutputTokens: useFastPath ? 256 : 2_048,
+  };
+}
+
 export async function completeWorkspaceChatDecision(input: {
   campusChat: WorkspaceChatDecisionProvider;
   request: ChatCompletionRequestInput;

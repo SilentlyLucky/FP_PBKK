@@ -13,7 +13,7 @@ describe("curated Knowledge reference pack", () => {
     expect(pack.metadata).toMatchObject({
       schema_version: "1.0",
       corpus_id: "promptlab-general-knowledge-seed-2026-10",
-      status: "ready_local_only",
+      status: "ready",
     });
     expect(pack.publicSources).toHaveLength(9);
     expect(pack.previews).toHaveLength(10);

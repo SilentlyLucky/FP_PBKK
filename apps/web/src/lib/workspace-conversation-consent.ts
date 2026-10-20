@@ -34,17 +34,15 @@ export function validateConversationSourceSelection(
     let reason: string | null = null;
 
     if (snapshotState === "loading") {
-      reason = "Izin sumber masih diperiksa.";
+      reason = "Daftar sumber masih dimuat.";
     } else if (snapshotState === "failed") {
-      reason = "Izin berbagi terbaru tidak dapat diverifikasi.";
+      reason = "Status sumber terbaru tidak dapat diperiksa.";
     } else if (!source) {
       reason = "Sumber tidak lagi tersedia atau telah dihapus.";
     } else if (source.deleted) {
       reason = "Sumber telah dihapus.";
     } else if (!source.eligible || !source.versionId) {
       reason = "Sumber belum memiliki versi aktif yang layak digunakan.";
-    } else if (source.permission !== "campus_indexer_allowed") {
-      reason = "Izin berbagi sudah dicabut; sumber ini hanya untuk lokal.";
     }
 
     if (reason) {

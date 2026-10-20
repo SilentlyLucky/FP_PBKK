@@ -4,15 +4,17 @@ import type { ProviderConnectionState } from "@promptlab/contracts";
 import {
   ArrowUpRight,
   BookOpenText,
-  ChevronDown,
   Clock3,
+  Ellipsis,
   FolderOpen,
   LoaderCircle,
   MessageSquarePlus,
+  Search,
   Send,
   ShieldAlert,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -81,6 +83,9 @@ interface KnowledgeSource {
   versionId: string | null;
   extractStatus: string;
   chunkCount: number;
+  semanticReadiness?: {
+    status: "ready" | "partial" | "stale" | "not_indexed" | "blocked";
+  } | null;
 }
 
 interface SourceSnapshot {
@@ -131,10 +136,6 @@ function conversationRecordUrl(
   conversationId: string,
 ): string {
   return `${conversationCollectionUrl(projectId)}/${encodeURIComponent(conversationId)}`;
-}
-
-function providerLabel(provider: WorkspaceProvider): string {
-  return provider === "codex_app_server" ? "Codex" : "Senopati";
 }
 
 function thinkingEffortLabel(effort: string): string {
@@ -193,6 +194,39 @@ function formatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function conversationDateGroup(value: string, now = new Date()): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sebelumnya";
+
+  const dayStart = (candidate: Date) =>
+    new Date(
+      candidate.getFullYear(),
+      candidate.getMonth(),
+      candidate.getDate(),
+    ).getTime();
+  const elapsedDays = Math.floor((dayStart(now) - dayStart(date)) / 86_400_000);
+  if (elapsedDays <= 0) return "Hari ini";
+  if (elapsedDays === 1) return "Kemarin";
+  if (elapsedDays < 7) return "7 hari terakhir";
+  return "Sebelumnya";
+}
+
+function conversationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+  return new Intl.DateTimeFormat(
+    "id-ID",
+    sameDay
+      ? { hour: "2-digit", minute: "2-digit" }
+      : { day: "numeric", month: "short" },
+  ).format(date);
 }
 
 function statusText(status: string): string {
@@ -286,6 +320,7 @@ export function WorkspaceConversation() {
     sourceIds: [],
   });
   const [draft, setDraft] = useState("");
+  const draftRevisionRef = useRef(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -297,9 +332,35 @@ export function WorkspaceConversation() {
     string | null
   >(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [workspaceAccessOpen, setWorkspaceAccessOpen] = useState(false);
+  const [fileReviewOpen, setFileReviewOpen] = useState(false);
+  const [conversationSearch, setConversationSearch] = useState("");
   const composerRef = useRef<HTMLFormElement>(null);
   const conversationWriteQueueRef = useRef(new Map<string, Promise<void>>());
   const deletedConversationIdsRef = useRef(new Set<string>());
+
+  function updateDraft(value: string) {
+    draftRevisionRef.current += 1;
+    setDraft(value);
+  }
+
+  useEffect(() => {
+    const contextBreakpoint = window.matchMedia("(max-width: 1360px)");
+    const updateContextVisibility = () =>
+      setContextPanelOpen(!contextBreakpoint.matches);
+    updateContextVisibility();
+    contextBreakpoint.addEventListener("change", updateContextVisibility);
+    return () =>
+      contextBreakpoint.removeEventListener("change", updateContextVisibility);
+  }, []);
+
+  useEffect(() => {
+    const textarea = composerRef.current?.querySelector("textarea");
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  }, [draft]);
 
   const currentProviderSnapshot =
     providerSnapshot?.projectId === activeProjectId ? providerSnapshot : null;
@@ -411,6 +472,16 @@ export function WorkspaceConversation() {
   const activeSources = sources.filter(
     (source) => !source.deleted && source.eligible && source.versionId,
   );
+  const hybridRetrievalReady =
+    selectedSourceIds.length > 0 &&
+    selectedSourceIds.every((sourceId) => {
+      const source = activeSources.find(
+        (candidate) => candidate.id === sourceId,
+      );
+      return ["ready", "partial"].includes(
+        source?.semanticReadiness?.status ?? "",
+      );
+    });
   useEffect(() => {
     if (!activeProjectId) return;
 
@@ -748,6 +819,14 @@ export function WorkspaceConversation() {
       historyOverride?.projectId === projectId
         ? mergeWorkspaceConversationLists(stored, historyOverride.conversations)
         : stored;
+    const currentTurn = current
+      .find((conversation) => conversation.id === conversationId)
+      ?.turns.find((turn) => turn.id === turnId);
+    if (!currentTurn) return Promise.resolve(false);
+    const updateKeys = Object.keys(update) as (keyof WorkspaceTurn)[];
+    if (updateKeys.every((key) => Object.is(currentTurn[key], update[key]))) {
+      return Promise.resolve(true);
+    }
     const updated = current.map((conversation) =>
       conversation.id === conversationId
         ? {
@@ -852,13 +931,13 @@ export function WorkspaceConversation() {
 
   function updateSources(sourceIds: string[]) {
     const validation = validateConversationSourceSelection(
-      [...new Set(sourceIds)].slice(0, 20),
+      [...new Set(sourceIds)],
       sources,
       sourceSnapshotState,
     );
     if (validation.issues.length) {
       setSendError(
-        "Pilihan sumber yang izinnya belum dapat dipastikan tidak disimpan. Hapus pilihan bermasalah atau muat ulang sumber.",
+        "Pilihan sumber yang belum siap tidak disimpan. Hapus pilihan bermasalah atau muat ulang daftar sumber.",
       );
       return;
     }
@@ -894,7 +973,7 @@ export function WorkspaceConversation() {
       sourceIds: [],
     });
     void commitConversation(conversation);
-    setDraft("");
+    updateDraft("");
     setSendError(null);
     setConversationRunError(null);
   }
@@ -962,7 +1041,7 @@ export function WorkspaceConversation() {
 
       if (activeConversationId === conversation.id) {
         setActiveConversationId(null);
-        setDraft("");
+        updateDraft("");
         setSendError(null);
         setConversationRunError(null);
       }
@@ -1022,7 +1101,7 @@ export function WorkspaceConversation() {
         error: detail,
       }));
       throw new Error(
-        `Izin sumber terbaru tidak dapat diverifikasi. Tidak ada sumber yang dikirim. ${detail}`,
+        `Status sumber terbaru tidak dapat diperiksa. Tidak ada sumber yang dikirim. ${detail}`,
       );
     }
   }
@@ -1068,6 +1147,7 @@ export function WorkspaceConversation() {
 
   async function submitMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const submittedDraftRevision = draftRevisionRef.current;
     const userText = draft.trim();
     if (
       !userText ||
@@ -1166,7 +1246,7 @@ export function WorkspaceConversation() {
           const sourceIdsForRun = [...current.sourceIds];
           if (selectedSourceValidation.issues.length) {
             setSendError(
-              "Pilihan sumber tidak memiliki izin berbagi yang dapat diverifikasi. Hapus pilihan bermasalah sebelum mengirim.",
+              "Pilihan sumber belum siap digunakan. Hapus pilihan bermasalah sebelum mengirim.",
             );
             return;
           }
@@ -1179,7 +1259,7 @@ export function WorkspaceConversation() {
             );
             if (latestValidation.issues.length) {
               setSendError(
-                "Izin atau kesiapan salah satu sumber berubah. Tidak ada run yang dibuat. Hapus pilihan bermasalah lalu coba lagi.",
+                "Status salah satu sumber berubah. Tidak ada run yang dibuat. Hapus pilihan bermasalah lalu coba lagi.",
               );
               return;
             }
@@ -1231,7 +1311,9 @@ export function WorkspaceConversation() {
               "Pesan belum dikirim karena riwayat tidak dapat disimpan ke database.",
             );
           }
-          setDraft("");
+          if (draftRevisionRef.current === submittedDraftRevision) {
+            updateDraft("");
+          }
 
           const promptResponse = await fetch(
             "/api/projects/" +
@@ -1484,6 +1566,36 @@ export function WorkspaceConversation() {
   const sortedConversations = [...conversations].sort((left, right) =>
     right.updatedAt.localeCompare(left.updatedAt),
   );
+  const normalizedConversationSearch = conversationSearch
+    .trim()
+    .toLocaleLowerCase("id-ID");
+  const filteredConversations = sortedConversations.filter((conversation) => {
+    if (!normalizedConversationSearch) return true;
+    return (
+      conversation.title
+        .toLocaleLowerCase("id-ID")
+        .includes(normalizedConversationSearch) ||
+      conversation.turns.some((turn) =>
+        turn.userText
+          .toLocaleLowerCase("id-ID")
+          .includes(normalizedConversationSearch),
+      )
+    );
+  });
+  const conversationGroups = [
+    "Hari ini",
+    "Kemarin",
+    "7 hari terakhir",
+    "Sebelumnya",
+  ].map((label) => ({
+    label,
+    conversations: filteredConversations.filter(
+      (conversation) => conversationDateGroup(conversation.updatedAt) === label,
+    ),
+  }));
+  const unavailableSources = sources.filter(
+    (source) => !source.deleted && (!source.eligible || !source.versionId),
+  );
   const composerDisabled =
     !activeProjectId ||
     conversationHistoryStatus !== "ready" ||
@@ -1497,7 +1609,7 @@ export function WorkspaceConversation() {
     if (!activeProjectId) return;
     const latestSources = await refreshSourcesForSend(activeProjectId);
     if (!sourceId) return;
-    const nextIds = [...new Set([...selectedSourceIds, sourceId])].slice(0, 20);
+    const nextIds = [...new Set([...selectedSourceIds, sourceId])];
     const validation = validateConversationSourceSelection(
       nextIds,
       latestSources,
@@ -1505,7 +1617,7 @@ export function WorkspaceConversation() {
     );
     if (validation.issues.length) {
       setSendError(
-        "File sudah diimpor, tetapi izin berbagi belum dapat diverifikasi. Pilih sumber secara manual setelah daftar dimuat ulang.",
+        "File sudah diimpor, tetapi status sumber belum siap. Pilih sumber secara manual setelah daftar dimuat ulang.",
       );
       return;
     }
@@ -1529,42 +1641,13 @@ export function WorkspaceConversation() {
   }
 
   return (
-    <section className={styles.page} aria-labelledby="workspace-title">
-      <div className={styles.pageHeading}>
-        <div>
-          <p className={styles.eyebrow}>Ruang kerja utama</p>
-          <h1 id="workspace-title">Workspace</h1>
-          <p className={styles.subtitle}>
-            Setiap pesan dioptimasi Senopati lalu otomatis dijalankan Codex.
-            Versi prompt tersimpan tidak diaktifkan otomatis.
-          </p>
-        </div>
-        <div className={styles.headingActions}>
-          <Button
-            type="button"
-            variant="secondary"
-            className={styles.mobileHistoryButton}
-            aria-expanded={historyOpen}
-            aria-controls="workspace-history"
-            onClick={() => setHistoryOpen((open) => !open)}
-          >
-            <Clock3 aria-hidden="true" size={16} />
-            Riwayat
-          </Button>
-          <Button
-            type="button"
-            onClick={startNewConversation}
-            disabled={!activeProjectId || conversationHistoryStatus !== "ready"}
-          >
-            <MessageSquarePlus aria-hidden="true" size={16} />
-            Percakapan baru
-          </Button>
-        </div>
-      </div>
-
+    <section className={styles.page} aria-label="Workspace">
+      <h1 className={styles.mobileWorkspaceTitle}>Workspace</h1>
       <div
         className={
-          styles.layout + (historyOpen ? " " + styles.historyVisible : "")
+          styles.layout +
+          (historyOpen ? " " + styles.historyVisible : "") +
+          (contextPanelOpen ? " " + styles.contextVisible : "")
         }
       >
         <aside
@@ -1574,9 +1657,34 @@ export function WorkspaceConversation() {
         >
           <div className={styles.historyHeader}>
             <div>
-              <h2>Percakapan</h2>
+              <h1 id="workspace-title">Workspace</h1>
               <p>{activeProject?.name ?? "Pilih proyek dari header"}</p>
             </div>
+            <Button
+              type="button"
+              className={styles.newConversationButton}
+              onClick={startNewConversation}
+              disabled={
+                !activeProjectId || conversationHistoryStatus !== "ready"
+              }
+            >
+              <MessageSquarePlus aria-hidden="true" size={16} />
+              Percakapan baru
+            </Button>
+            <label
+              className={styles.historySearch}
+              htmlFor="conversation-search"
+            >
+              <Search aria-hidden="true" size={16} />
+              <span className="sr-only">Cari percakapan</span>
+              <input
+                id="conversation-search"
+                type="search"
+                value={conversationSearch}
+                placeholder="Cari percakapan…"
+                onChange={(event) => setConversationSearch(event.target.value)}
+              />
+            </label>
           </div>
           <div className={styles.historyList}>
             {conversationHistoryStatus === "ready" && historyActionError ? (
@@ -1611,78 +1719,140 @@ export function WorkspaceConversation() {
               </div>
             ) : null}
             {conversationHistoryStatus === "ready"
-              ? sortedConversations.map((conversation) => (
-                  <div className={styles.historyItemRow} key={conversation.id}>
-                    <button
-                      type="button"
-                      className={
-                        styles.historyItem +
-                        (conversation.id === activeConversationId
-                          ? " " + styles.historyItemActive
-                          : "")
-                      }
-                      aria-current={
-                        conversation.id === activeConversationId
-                          ? "page"
-                          : undefined
-                      }
-                      onClick={() => selectConversation(conversation)}
+              ? conversationGroups.map((group) =>
+                  group.conversations.length ? (
+                    <section
+                      className={styles.historyGroup}
+                      key={group.label}
+                      aria-label={group.label}
                     >
-                      <MessageSquarePlus aria-hidden="true" size={16} />
-                      <span className={styles.historyItemCopy}>
-                        <strong>{conversation.title}</strong>
-                        <small>{formatDate(conversation.updatedAt)}</small>
-                      </span>
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={styles.historyDeleteButton}
-                      aria-label={`Hapus percakapan ${conversation.title}`}
-                      disabled={deletingConversationId !== null}
-                      onClick={() => void deleteConversation(conversation)}
-                    >
-                      {deletingConversationId === conversation.id ? (
-                        <LoaderCircle
-                          className={styles.spin}
-                          aria-hidden="true"
-                          size={16}
-                        />
-                      ) : (
-                        <Trash2 aria-hidden="true" size={16} />
-                      )}
-                    </Button>
-                  </div>
-                ))
+                      <h2>{group.label}</h2>
+                      {group.conversations.map((conversation) => (
+                        <div
+                          className={styles.historyItemRow}
+                          key={conversation.id}
+                        >
+                          <button
+                            type="button"
+                            className={
+                              styles.historyItem +
+                              (conversation.id === activeConversationId
+                                ? " " + styles.historyItemActive
+                                : "")
+                            }
+                            aria-current={
+                              conversation.id === activeConversationId
+                                ? "page"
+                                : undefined
+                            }
+                            onClick={() => selectConversation(conversation)}
+                          >
+                            <span className={styles.historyItemCopy}>
+                              <strong>{conversation.title}</strong>
+                              <small>
+                                {shortText(
+                                  conversation.turns.at(-1)?.userText ??
+                                    "Belum ada pesan",
+                                  58,
+                                )}
+                              </small>
+                            </span>
+                            <time dateTime={conversation.updatedAt}>
+                              {conversationTime(conversation.updatedAt)}
+                            </time>
+                          </button>
+                          <details className={styles.historyActions}>
+                            <summary
+                              aria-label={`Tindakan untuk ${conversation.title}`}
+                              title="Tindakan percakapan"
+                            >
+                              <Ellipsis aria-hidden="true" size={17} />
+                            </summary>
+                            <div>
+                              <button
+                                type="button"
+                                disabled={deletingConversationId !== null}
+                                onClick={() =>
+                                  void deleteConversation(conversation)
+                                }
+                              >
+                                {deletingConversationId === conversation.id ? (
+                                  <LoaderCircle
+                                    className={styles.spin}
+                                    aria-hidden="true"
+                                    size={15}
+                                  />
+                                ) : (
+                                  <Trash2 aria-hidden="true" size={15} />
+                                )}
+                                Hapus percakapan
+                              </button>
+                            </div>
+                          </details>
+                        </div>
+                      ))}
+                    </section>
+                  ) : null,
+                )
               : null}
             {conversationHistoryStatus === "ready" &&
             !sortedConversations.length ? (
               <p className={styles.historyEmpty}>Belum ada percakapan.</p>
             ) : null}
+            {conversationHistoryStatus === "ready" &&
+            sortedConversations.length > 0 &&
+            !filteredConversations.length ? (
+              <p className={styles.historyEmpty}>
+                Tidak ada percakapan yang cocok dengan pencarian.
+              </p>
+            ) : null}
           </div>
-          <p className={styles.historyFootnote}>
-            Riwayat chat tersimpan di database lokal aplikasi dan tetap tersedia
-            setelah halaman dimuat ulang.
-          </p>
         </aside>
 
         <div className={styles.chatPanel} data-testid="workspace-chat-panel">
           <header className={styles.chatHeader}>
-            <div>
+            <div className={styles.chatTitle}>
               <h2>{activeConversation?.title ?? "Percakapan baru"}</h2>
               <p>
                 {activeProject?.name ?? "Pilih atau buat proyek untuk memulai"}
+                {selectedSourceIds.length
+                  ? ` · ${selectedSourceIds.length} sumber dipilih`
+                  : ""}
               </p>
             </div>
-            <div className={styles.chatHeaderStatus}>
-              {providerLoading ? (
-                <Badge variant="muted">Memeriksa koneksi Senopati</Badge>
-              ) : senopatiReady ? (
-                <Badge variant="success">Senopati siap</Badge>
-              ) : (
-                <Badge variant="warning">Senopati tidak tersedia</Badge>
-              )}
+            <div className={styles.chatHeaderActions}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className={styles.mobileHistoryButton}
+                aria-expanded={historyOpen}
+                aria-controls="workspace-history"
+                onClick={() => setHistoryOpen((open) => !open)}
+              >
+                <Clock3 aria-hidden="true" size={16} />
+                Riwayat
+              </Button>
+              <span className={styles.chatHeaderStatus}>
+                {providerLoading ? (
+                  <Badge variant="muted">Memeriksa Senopati</Badge>
+                ) : senopatiReady ? (
+                  <Badge variant="success">Senopati siap</Badge>
+                ) : (
+                  <Badge variant="warning">Senopati tidak tersedia</Badge>
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                aria-expanded={contextPanelOpen}
+                aria-controls="workspace-context"
+                onClick={() => setContextPanelOpen((open) => !open)}
+              >
+                <BookOpenText aria-hidden="true" size={15} />
+                Konteks
+              </Button>
             </div>
           </header>
 
@@ -1697,8 +1867,8 @@ export function WorkspaceConversation() {
                 </div>
                 <h3>Pilih proyek untuk mulai</h3>
                 <p>
-                  Workspace menggunakan proyek di bagian atas. Buat proyek
-                  melalui tombol tambah di header.
+                  Pilih atau buat proyek di bagian atas untuk memulai
+                  percakapan.
                 </p>
               </div>
             ) : null}
@@ -1710,10 +1880,10 @@ export function WorkspaceConversation() {
                 <div className={styles.emptyIcon} aria-hidden="true">
                   <Sparkles size={20} />
                 </div>
-                <h3>Mulai dari satu permintaan</h3>
+                <h3>Apa yang ingin Anda kerjakan?</h3>
                 <p>
-                  Senopati mengoptimasi setiap prompt sebelum Codex menjawab.
-                  Tambahkan file hanya jika pesan membutuhkan konteks dokumen.
+                  Tulis pertanyaan atau tugas. PromptLab akan membantu
+                  mengoptimalkan dan menjalankannya.
                 </p>
                 {providerError ? (
                   <p className={styles.unavailableText} role="status">
@@ -1728,20 +1898,20 @@ export function WorkspaceConversation() {
                 <div className={styles.userMessage}>
                   <p className={styles.messageLabel}>Anda</p>
                   <p className={styles.userText}>{turn.userText}</p>
-                  <time>{formatDate(turn.createdAt)}</time>
+                  <time dateTime={turn.createdAt}>
+                    {formatDate(turn.createdAt)}
+                  </time>
                 </div>
 
                 {turn.runId &&
                 activeProjectId &&
-                conversationHistoryStatus === "ready" ? (
+                conversationHistoryStatus !== "loading" ? (
                   <WorkspaceRunResult
                     key={activeProjectId + ":" + turn.runId}
                     projectId={activeProjectId}
                     runId={turn.runId}
                     initialStatus={turn.status}
-                    providerLabel={
-                      turn.provider ? providerLabel(turn.provider) : "Senopati"
-                    }
+                    providerLabel="Codex"
                     focusOnMount={false}
                     chatPresentation
                     userPrompt={turn.userText}
@@ -1901,15 +2071,15 @@ export function WorkspaceConversation() {
             id="workspace-composer"
             onSubmit={(event) => void submitMessage(event)}
           >
-            <label className={styles.composerLabel} htmlFor="workspace-message">
+            <label className="sr-only" htmlFor="workspace-message">
               Pesan
             </label>
             <textarea
               id="workspace-message"
               value={draft}
               maxLength={MAX_WORKSPACE_MESSAGE_CHARACTERS}
-              placeholder="Ketik pesan untuk dioptimasi Senopati…"
-              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ketik pesan Anda…"
+              onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (
                   event.key === "Enter" &&
@@ -1929,14 +2099,364 @@ export function WorkspaceConversation() {
               }
               aria-describedby="workspace-composer-help"
             />
-
-            <div className={styles.composerControls}>
-              <div className={styles.controlGroup}>
-                <span>Pengarah</span>
-                <p className={styles.automaticThinking}>Senopati</p>
+            {sendError ? (
+              <p className={styles.composerError} role="alert">
+                {sendError}
+              </p>
+            ) : null}
+            {historyStorageError ? (
+              <p className={styles.composerError} role="status">
+                Salinan browser tidak tersimpan. Riwayat utama tetap disimpan di
+                database aplikasi.
+              </p>
+            ) : null}
+            <div className={styles.composerFooter}>
+              <div className={styles.composerActions}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-controls="workspace-context"
+                  aria-expanded={contextPanelOpen}
+                  onClick={() => setContextPanelOpen(true)}
+                >
+                  <BookOpenText aria-hidden="true" size={15} />
+                  Sumber
+                  {selectedSourceIds.length
+                    ? ` · ${selectedSourceIds.length}`
+                    : ""}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-controls="workspace-context"
+                  aria-expanded={contextPanelOpen}
+                  onClick={() => setContextPanelOpen(true)}
+                >
+                  <FolderOpen aria-hidden="true" size={15} />
+                  Akses & alat
+                </Button>
               </div>
-              <div className={styles.controlGroup}>
-                <label htmlFor="workspace-preference">Gaya jawaban</label>
+              <p id="workspace-composer-help">
+                Enter kirim · Shift + Enter baris baru · Maks.{" "}
+                {MAX_WORKSPACE_MESSAGE_CHARACTERS.toLocaleString("id-ID")}{" "}
+                karakter
+              </p>
+              <Button
+                type="submit"
+                disabled={composerDisabled || !draft.trim()}
+                aria-label={sending ? "Mengirim pesan" : "Kirim pesan"}
+              >
+                {sending ? (
+                  <LoaderCircle
+                    className={styles.spin}
+                    aria-hidden="true"
+                    size={16}
+                  />
+                ) : (
+                  <Send aria-hidden="true" size={16} />
+                )}
+                {sending ? "Mengirim…" : "Kirim"}
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        <aside
+          id="workspace-context"
+          className={styles.contextPanel}
+          aria-label="Konteks percakapan"
+          aria-hidden={!contextPanelOpen}
+        >
+          <header className={styles.contextHeader}>
+            <div>
+              <h2>Konteks</h2>
+              <p>{activeProject?.name ?? "Pilih proyek"}</p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={styles.contextClose}
+              aria-label="Tutup panel konteks"
+              onClick={() => setContextPanelOpen(false)}
+            >
+              <X aria-hidden="true" size={17} />
+            </Button>
+          </header>
+          <div className={styles.contextScroll}>
+            <section className={styles.contextSection}>
+              <div className={styles.contextSectionHeading}>
+                <h3>Sumber proyek</h3>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/sources">Kelola</Link>
+                </Button>
+              </div>
+              {sourceLoading ? (
+                <p className={styles.contextNotice} role="status">
+                  Memuat sumber proyek…
+                </p>
+              ) : sourceError ? (
+                <div className={styles.sourceEmpty} role="status">
+                  <p>Sumber gagal dimuat.</p>
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/sources">
+                      Buka Sumber
+                      <ArrowUpRight aria-hidden="true" size={14} />
+                    </Link>
+                  </Button>
+                </div>
+              ) : activeSources.length ? (
+                <div className={styles.contextSourceList}>
+                  {activeSources.map((source) => {
+                    return (
+                      <label
+                        key={source.id}
+                        className={styles.sourceOption}
+                        htmlFor={"workspace-source-" + source.id}
+                      >
+                        <input
+                          id={"workspace-source-" + source.id}
+                          type="checkbox"
+                          checked={selectedSourceIds.includes(source.id)}
+                          disabled={
+                            sending ||
+                            conversationHistoryStatus !== "ready" ||
+                            selectedSourceValidation.issues.length > 0
+                          }
+                          onChange={(change) =>
+                            updateSources(
+                              change.target.checked
+                                ? [...selectedSourceIds, source.id]
+                                : selectedSourceIds.filter(
+                                    (id) => id !== source.id,
+                                  ),
+                            )
+                          }
+                        />
+                        <span>
+                          <strong>{source.displayName}</strong>
+                          <small>
+                            Versi {source.version ?? "tidak tersedia"} · siap
+                            dipilih
+                          </small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={styles.sourceEmpty}>
+                  <p>Belum ada sumber yang siap dipilih.</p>
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/sources">
+                      Tambah sumber
+                      <ArrowUpRight aria-hidden="true" size={14} />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+              {unavailableSources.length ? (
+                <div className={styles.unavailableSources}>
+                  <p>Belum siap</p>
+                  {unavailableSources.map((source) => (
+                    <small key={source.id}>
+                      {source.displayName} · {source.extractStatus}
+                    </small>
+                  ))}
+                </div>
+              ) : null}
+              {selectedSourceValidation.issues.length ? (
+                <div className={styles.sourceIssues} role="status">
+                  <p>
+                    Pilihan ini belum dapat digunakan. Periksa status sumber
+                    sebelum mengirim pesan.
+                  </p>
+                  <ul>
+                    {selectedSourceValidation.issues.map((issue) => (
+                      <li key={issue.id}>
+                        <strong>{issue.displayName}</strong>
+                        <span>{issue.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={sending || conversationHistoryStatus !== "ready"}
+                    onClick={() => {
+                      const issueIds = new Set(
+                        selectedSourceValidation.issues.map(
+                          (issue) => issue.id,
+                        ),
+                      );
+                      updateSources(
+                        selectedSourceIds.filter((id) => !issueIds.has(id)),
+                      );
+                    }}
+                  >
+                    Hapus pilihan bermasalah
+                  </Button>
+                  {sourceSnapshotState === "failed" && activeProjectId ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={
+                        sending || conversationHistoryStatus !== "ready"
+                      }
+                      onClick={() =>
+                        void refreshSourcesForSend(activeProjectId)
+                          .then(() => setSendError(null))
+                          .catch((cause: unknown) =>
+                            setSendError(
+                              cause instanceof Error
+                                ? cause.message
+                                : "Daftar sumber belum dapat dimuat ulang.",
+                            ),
+                          )
+                      }
+                    >
+                      Muat ulang daftar sumber
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
+            <section className={styles.contextSection}>
+              <h3>Mode retrieval</h3>
+              <label className={styles.retrievalControl}>
+                <span>Strategi</span>
+                <select
+                  value={selectedRetrievalStrategy}
+                  disabled={
+                    sending ||
+                    conversationHistoryStatus !== "ready" ||
+                    activeSources.length === 0
+                  }
+                  onChange={(event) =>
+                    updateRetrievalStrategy(event.target.value)
+                  }
+                >
+                  <option value="auto">Otomatis · Senopati memilih</option>
+                  <option value="lexical">Leksikal</option>
+                  <option value="graph">GraphRAG</option>
+                  {hybridRetrievalReady ||
+                  selectedRetrievalStrategy === "hybrid" ? (
+                    <option value="hybrid" disabled={!hybridRetrievalReady}>
+                      Hybrid
+                      {!hybridRetrievalReady
+                        ? " · indeks embedding tidak siap"
+                        : ""}
+                    </option>
+                  ) : null}
+                  <option value="full_context">Konteks sumber penuh</option>
+                </select>
+              </label>
+              <p className={styles.contextNotice}>
+                Strategi dan rute fallback aktual dicatat di detail run.
+              </p>
+              {selectedSourceIds.length > 0 && !hybridRetrievalReady ? (
+                <p className={styles.contextNotice}>
+                  Hybrid tersedia setelah indeks embedding siap untuk sumber
+                  yang dipilih.
+                </p>
+              ) : null}
+              {selectedRetrievalStrategy === "graph" ? (
+                <p className={styles.contextNotice}>
+                  GraphRAG memerlukan snapshot aktif untuk sumber pilihan.
+                </p>
+              ) : null}
+            </section>
+
+            <section className={styles.contextSection}>
+              <h3>Akses & alat</h3>
+              <details
+                className={styles.folderPicker}
+                onToggle={(event) =>
+                  setWorkspaceAccessOpen(event.currentTarget.open)
+                }
+              >
+                <summary>
+                  <FolderOpen aria-hidden="true" size={15} />
+                  Baca file workspace
+                </summary>
+                <div className={styles.folderPickerBody}>
+                  <p>
+                    Folder hanya dapat dibaca setelah akses proyek diberikan.
+                    File tidak diimpor otomatis.
+                  </p>
+                  {workspaceAccessOpen ? (
+                    <LocalSourceBrowser onImported={onLocalSourceImported} />
+                  ) : null}
+                </div>
+              </details>
+              <details
+                className={styles.folderPicker}
+                onToggle={(event) =>
+                  setFileReviewOpen(event.currentTarget.open)
+                }
+              >
+                <summary>
+                  <FolderOpen aria-hidden="true" size={15} />
+                  Tinjau usulan file
+                </summary>
+                <div className={styles.folderPickerBody}>
+                  <p>
+                    Usulan dapat diuji pada snapshot sebelum Anda menyetujui
+                    perubahan.
+                  </p>
+                  {fileReviewOpen ? (
+                    <LocalFileReview
+                      projectId={activeProjectId}
+                      codexTarget={{
+                        state: providerLoading
+                          ? "loading"
+                          : codexTargetReady
+                            ? "available"
+                            : "unavailable",
+                        modelId: codexTarget?.requestedModel ?? null,
+                        ...(selectedThinkingEffort
+                          ? { reasoningEffort: selectedThinkingEffort }
+                          : {}),
+                        message: providerError,
+                      }}
+                      codexOptimizer={{
+                        state: providerLoading
+                          ? "loading"
+                          : senopatiReady
+                            ? "available"
+                            : "unavailable",
+                        modelId: campusOptimizer?.requestedModel ?? null,
+                        message: providerError,
+                      }}
+                    />
+                  ) : null}
+                </div>
+              </details>
+            </section>
+
+            <section className={styles.contextSection}>
+              <h3>Model & Effort</h3>
+              <div className={styles.modelSummary}>
+                <span className={styles.statusDot} aria-hidden="true" />
+                <span>
+                  <strong>{codexModel?.displayName ?? "Codex target"}</strong>
+                  <small>
+                    {codexTargetReady
+                      ? "Target tersedia di Pengaturan"
+                      : "Target belum terverifikasi"}
+                  </small>
+                </span>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/settings" aria-label="Atur model target">
+                    Atur
+                  </Link>
+                </Button>
+              </div>
+              <label className={styles.retrievalControl}>
+                <span>Gaya jawaban</span>
                 <select
                   id="workspace-preference"
                   value={preference}
@@ -1949,17 +2469,16 @@ export function WorkspaceConversation() {
                     updatePreference(event.target.value as WorkspacePreference)
                   }
                 >
-                  <option value="quality">Teliti</option>
-                  <option value="balanced">Seimbang</option>
                   <option value="efficiency">Ringkas</option>
+                  <option value="balanced">Seimbang</option>
+                  <option value="quality">Mendalam</option>
                 </select>
-              </div>
-
+              </label>
               {codexTargetReady &&
               (supportedThinkingEfforts.length > 0 ||
                 selectedThinkingEffortUnavailable) ? (
-                <div className={styles.controlGroup}>
-                  <label htmlFor="workspace-thinking">Thinking Codex</label>
+                <label className={styles.retrievalControl}>
+                  <span>Reasoning effort Codex</span>
                   <select
                     id="workspace-thinking"
                     value={selectedThinkingValue}
@@ -1967,12 +2486,13 @@ export function WorkspaceConversation() {
                     onChange={(event) =>
                       updateThinkingEffort(event.target.value)
                     }
+                    aria-describedby="workspace-thinking-help"
                   >
-                    <option value="auto">Auto</option>
+                    <option value="auto">Otomatis</option>
                     <option value="">
                       Standar
                       {defaultThinkingEffort
-                        ? " · " + thinkingEffortLabel(defaultThinkingEffort)
+                        ? ` · ${thinkingEffortLabel(defaultThinkingEffort)}`
                         : ""}
                     </option>
                     {selectedThinkingEffortUnavailable ? (
@@ -1990,292 +2510,21 @@ export function WorkspaceConversation() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
               ) : null}
-              <div className={styles.controlGroup}>
-                <details className={styles.contextPicker}>
-                  <summary>
-                    <BookOpenText aria-hidden="true" size={15} />
-                    Sumber
-                    {selectedSourceIds.length
-                      ? " · " + selectedSourceIds.length
-                      : ""}
-                  </summary>
-                  <div className={styles.contextOptions}>
-                    {activeSources.length ? (
-                      <details className={styles.retrievalPicker}>
-                        <summary>
-                          Mode pencarian ·{" "}
-                          {selectedRetrievalStrategy === "auto"
-                            ? "Auto"
-                            : selectedRetrievalStrategy === "lexical"
-                              ? "Leksikal"
-                              : selectedRetrievalStrategy === "hybrid"
-                                ? "Hybrid"
-                                : selectedRetrievalStrategy === "graph"
-                                  ? "GraphRAG"
-                                  : "Konteks penuh"}
-                          <ChevronDown
-                            className={styles.retrievalChevron}
-                            aria-hidden="true"
-                            size={14}
-                          />
-                        </summary>
-                        <div className={styles.retrievalOptions}>
-                          <label className={styles.retrievalControl}>
-                            <span>Mode pencarian</span>
-                            <select
-                              value={selectedRetrievalStrategy}
-                              disabled={
-                                sending || conversationHistoryStatus !== "ready"
-                              }
-                              onChange={(event) =>
-                                updateRetrievalStrategy(event.target.value)
-                              }
-                            >
-                              <option value="auto">Auto</option>
-                              <option value="lexical">Leksikal</option>
-                              <option value="hybrid">Hybrid</option>
-                              <option value="graph">GraphRAG</option>
-                              <option value="full_context">
-                                Konteks sumber penuh
-                              </option>
-                            </select>
-                          </label>
-                          {selectedRetrievalStrategy === "graph" ? (
-                            <p className={styles.contextNotice}>
-                              GraphRAG perlu snapshot aktif.
-                            </p>
-                          ) : null}
-                        </div>
-                      </details>
-                    ) : null}
-                    {sourceLoading ? (
-                      <p className={styles.contextNotice}>
-                        Memuat sumber proyek…
-                      </p>
-                    ) : sourceError ? (
-                      <div className={styles.sourceEmpty} role="status">
-                        <p>Sumber gagal dimuat.</p>
-                        <Button asChild variant="secondary" size="sm">
-                          <Link href="/sources">
-                            Buka Sumber
-                            <ArrowUpRight aria-hidden="true" size={14} />
-                          </Link>
-                        </Button>
-                      </div>
-                    ) : activeSources.length ? (
-                      activeSources.map((source) => {
-                        const canSendSource =
-                          source.permission === "campus_indexer_allowed";
-                        return (
-                          <label
-                            key={source.id}
-                            className={styles.sourceOption}
-                            htmlFor={"workspace-source-" + source.id}
-                          >
-                            <input
-                              id={"workspace-source-" + source.id}
-                              type="checkbox"
-                              checked={selectedSourceIds.includes(source.id)}
-                              disabled={
-                                sending ||
-                                conversationHistoryStatus !== "ready" ||
-                                (!canSendSource &&
-                                  !selectedSourceIds.includes(source.id)) ||
-                                selectedSourceValidation.issues.length > 0
-                              }
-                              onChange={(change) =>
-                                updateSources(
-                                  change.target.checked
-                                    ? [...selectedSourceIds, source.id]
-                                    : selectedSourceIds.filter(
-                                        (id) => id !== source.id,
-                                      ),
-                                )
-                              }
-                            />
-                            <span>
-                              <strong>{source.displayName}</strong>
-                              <small>
-                                {source.permission === "campus_indexer_allowed"
-                                  ? "Versi " +
-                                    (source.version ?? "tidak tersedia") +
-                                    " · siap dipilih"
-                                  : "Izin saat ini hanya lokal; dokumen tidak dikirim ke Senopati"}
-                              </small>
-                            </span>
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <div className={styles.sourceEmpty}>
-                        <p>Belum ada sumber aktif.</p>
-                        <Button asChild variant="secondary" size="sm">
-                          <Link href="/sources">
-                            Tambah sumber
-                            <ArrowUpRight aria-hidden="true" size={14} />
-                          </Link>
-                        </Button>
-                      </div>
-                    )}
-                    {selectedSourceValidation.issues.length ? (
-                      <div className={styles.sourceIssues} role="status">
-                        <p>
-                          Sebagian pilihan belum dapat dikirim. Periksa ulang
-                          izin dan kesiapan sumber.
-                        </p>
-                        <ul>
-                          {selectedSourceValidation.issues.map((issue) => (
-                            <li key={issue.id}>
-                              <strong>{issue.displayName}</strong>
-                              <span>{issue.reason}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={
-                            sending || conversationHistoryStatus !== "ready"
-                          }
-                          onClick={() => {
-                            const issueIds = new Set(
-                              selectedSourceValidation.issues.map(
-                                (issue) => issue.id,
-                              ),
-                            );
-                            updateSources(
-                              selectedSourceIds.filter(
-                                (id) => !issueIds.has(id),
-                              ),
-                            );
-                          }}
-                        >
-                          Hapus pilihan bermasalah
-                        </Button>
-                        {sourceSnapshotState === "failed" && activeProjectId ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            disabled={
-                              sending || conversationHistoryStatus !== "ready"
-                            }
-                            onClick={() =>
-                              void refreshSourcesForSend(activeProjectId)
-                                .then(() => setSendError(null))
-                                .catch((cause: unknown) =>
-                                  setSendError(
-                                    cause instanceof Error
-                                      ? cause.message
-                                      : "Izin sumber belum dapat diperiksa ulang.",
-                                  ),
-                                )
-                            }
-                          >
-                            Coba periksa ulang izin
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {selectedSourceIds.length &&
-                    !selectedSourceValidation.issues.length ? (
-                      <p className={styles.egressNotice}>
-                        Sumber terpilih dikirim ke Codex sebagai konteks setelah
-                        izin diverifikasi.
-                      </p>
-                    ) : null}
-                  </div>
-                </details>
-              </div>
-            </div>
-
-            <details className={styles.folderPicker}>
-              <summary>
-                <FolderOpen aria-hidden="true" size={15} />
-                Folder dan file
-              </summary>
-              <div className={styles.folderPickerBody}>
-                <p>
-                  PromptLab hanya membaca folder setelah Anda mengizinkannya.
-                  File tidak diunggah otomatis; impor sendiri jika ingin
-                  menjadikannya sumber.
+              {codexTargetReady && supportedThinkingEfforts.length > 0 ? (
+                <p
+                  id="workspace-thinking-help"
+                  className={styles.contextNotice}
+                >
+                  Tingkat usaha berpikir mengatur seberapa banyak model
+                  melakukan penalaran; penalaran internal tetap tidak
+                  ditampilkan.
                 </p>
-                <LocalSourceBrowser onImported={onLocalSourceImported} />
-              </div>
-            </details>
-
-            {sendError ? (
-              <p className={styles.composerError} role="alert">
-                {sendError}
-              </p>
-            ) : null}
-            {historyStorageError ? (
-              <p className={styles.composerError} role="status">
-                Salinan browser tidak tersimpan. Riwayat utama tetap disimpan di
-                database aplikasi.
-              </p>
-            ) : null}
-            <div className={styles.composerFooter}>
-              <p id="workspace-composer-help">
-                Enter kirim · Shift + Enter baris baru · Maks.{" "}
-                {MAX_WORKSPACE_MESSAGE_CHARACTERS.toLocaleString("id-ID")}{" "}
-                karakter
-              </p>
-              <Button
-                type="submit"
-                disabled={composerDisabled || !draft.trim()}
-              >
-                {sending ? (
-                  <LoaderCircle
-                    className={styles.spin}
-                    aria-hidden="true"
-                    size={16}
-                  />
-                ) : (
-                  <Send aria-hidden="true" size={16} />
-                )}
-                {sending ? "Mengirim…" : "Kirim"}
-              </Button>
-            </div>
-          </form>
-          <details className={styles.folderPicker}>
-            <summary>
-              <FolderOpen aria-hidden="true" size={15} />
-              Tinjau file, usulkan, dan jalankan tes
-            </summary>
-            <div className={styles.folderPickerBody}>
-              <p>
-                Usulan dapat diuji pada snapshot baseline dan kandidat sebelum
-                Anda menerapkannya. File proyek asli tidak diubah oleh evaluasi.
-              </p>
-              <LocalFileReview
-                projectId={activeProjectId}
-                codexTarget={{
-                  state: providerLoading
-                    ? "loading"
-                    : codexTargetReady
-                      ? "available"
-                      : "unavailable",
-                  modelId: codexTarget?.requestedModel ?? null,
-                  ...(selectedThinkingEffort
-                    ? { reasoningEffort: selectedThinkingEffort }
-                    : {}),
-                  message: providerError,
-                }}
-                codexOptimizer={{
-                  state: providerLoading
-                    ? "loading"
-                    : senopatiReady
-                      ? "available"
-                      : "unavailable",
-                  modelId: campusOptimizer?.requestedModel ?? null,
-                  message: providerError,
-                }}
-              />
-            </div>
-          </details>
-        </div>
+              ) : null}
+            </section>
+          </div>
+        </aside>
       </div>
     </section>
   );

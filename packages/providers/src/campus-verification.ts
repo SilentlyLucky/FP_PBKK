@@ -15,6 +15,7 @@ export const CAMPUS_VERIFICATION_PROVENANCE =
 export type CampusVerificationFailureCode =
   | "AUTH_REQUIRED"
   | "PROVIDER_HTTP_ERROR"
+  | "PROVIDER_TRANSPORT_ERROR"
   | "PROVIDER_RESPONSE_INVALID"
   | "PROVIDER_TIMEOUT"
   | "PROVIDER_ABORTED"
@@ -245,7 +246,8 @@ export function campusCapabilityCampaignMatchesConfiguration(
     campaign.schemaVersion === 1 &&
     campaign.provider === "campus_gateway" &&
     campaign.requestedModel === options.requestedModel &&
-    campaign.credentialFingerprint === campusCredentialFingerprint(options.apiKey)
+    campaign.credentialFingerprint ===
+      campusCredentialFingerprint(options.apiKey)
   );
 }
 
@@ -263,6 +265,8 @@ export function campusVerificationFailureMessage(
       return "Request verifikasi dibatalkan sebelum selesai.";
     case "PROVIDER_HTTP_ERROR":
       return "Gateway kampus tidak menerima request dengan sukses. Periksa akses gateway; tidak ada retry.";
+    case "PROVIDER_TRANSPORT_ERROR":
+      return "Koneksi ke gateway terputus sebelum respons HTTP diterima. Gateway mungkin sudah menerima request; periksa status sebelum mencoba lagi.";
     default:
       return "Verifikasi koneksi gagal. Detail gateway tidak ditampilkan dan tidak ada retry.";
   }

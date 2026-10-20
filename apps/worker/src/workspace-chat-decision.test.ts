@@ -14,12 +14,15 @@ const { reserveInferenceCall } = vi.hoisted(() => ({
 }));
 
 vi.mock("@promptlab/providers/provider-smoke-ledger", () => ({
+  isProviderVerificationCampaignConfigured: () =>
+    Boolean(process.env.PROMPTLAB_PROVIDER_VERIFICATION_CAMPAIGN?.trim()),
   reserveInferenceCall,
 }));
 
 import {
   completeWorkspaceChatDecision,
   parseWorkspaceChatDecision,
+  workspaceChatGenerationPolicyForPrompt,
   workspaceChatDecisionJsonSchema,
   workspaceChatDecisionOutputInstructions,
 } from "./workspace-chat-decision.ts";
@@ -56,6 +59,27 @@ afterEach(() => {
 });
 
 describe("Workspace chat decision adapter", () => {
+  it.each(["halo", "  Test!  ", "2+2=", "(12 / 3) * 4"])(
+    "uses the bounded fast path for trivial input %j",
+    (prompt) => {
+      expect(workspaceChatGenerationPolicyForPrompt(prompt)).toEqual({
+        disableThinking: true,
+        maxOutputTokens: 256,
+      });
+    },
+  );
+
+  it.each([
+    "buat email ke dosen minta tambahan waktu karena sakit",
+    "jelaskan 2+2 dengan langkah-langkah",
+    "analisis risiko perubahan database",
+  ])("keeps reasoning for substantive prompt %j", (prompt) => {
+    expect(workspaceChatGenerationPolicyForPrompt(prompt)).toEqual({
+      disableThinking: false,
+      maxOutputTokens: 2_048,
+    });
+  });
+
   it("parses a single schema-valid decision wrapped in provider text", () => {
     const text = [
       "<analysis>Private reasoning is ignored.</analysis>",

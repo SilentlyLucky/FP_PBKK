@@ -181,7 +181,7 @@ export const WorkspaceRetrievalStrategySchema = z.enum([
 export const RunRetrievalSelectionSchema = z.strictObject({
   strategy: RetrievalStrategySchema,
   // An empty selection means no sources; it never expands to every project source.
-  sourceIds: z.array(IdSchema).max(20).default([]),
+  sourceIds: z.array(IdSchema).default([]),
   // Experiments freeze the graph snapshot selected at setup time. Legacy runs
   // omit this and resolve their snapshot in the worker preflight.
   snapshotId: IdSchema.nullable().optional(),
@@ -190,7 +190,7 @@ export const RunRetrievalSelectionSchema = z.strictObject({
 export const WorkspaceRunRetrievalSelectionSchema = z.strictObject({
   strategy: WorkspaceRetrievalStrategySchema,
   // An empty selection means no sources; it never expands to every project source.
-  sourceIds: z.array(IdSchema).max(20).default([]),
+  sourceIds: z.array(IdSchema).default([]),
   // The server may freeze a compatible graph snapshot for Auto at enqueue.
   // Clients may select this only for explicit GraphRAG.
   snapshotId: IdSchema.nullable().optional(),
@@ -207,7 +207,7 @@ export const EvaluationSourceVersionSchema = z.strictObject({
 
 export const WorkspaceSourceManifestEntrySchema =
   EvaluationSourceVersionSchema.extend({
-    sourcePermission: z.literal("campus_indexer_allowed"),
+    sourcePermission: z.enum(["local_only", "campus_indexer_allowed"]),
   });
 
 export type WorkspaceSourceManifestEntry = z.infer<
@@ -216,7 +216,7 @@ export type WorkspaceSourceManifestEntry = z.infer<
 
 export const WorkspaceSourceManifestSchema = z.strictObject({
   format: z.literal("promptlab-workspace-source-manifest-v1"),
-  sources: z.array(WorkspaceSourceManifestEntrySchema).max(20),
+  sources: z.array(WorkspaceSourceManifestEntrySchema),
 });
 
 export type WorkspaceSourceManifest = z.infer<
@@ -1047,15 +1047,14 @@ export const KnowledgeRetrievalStrategySchema = z.enum([
 ]);
 
 export const GraphBuildPreviewRequestSchema = z.strictObject({
-  sourceIds: z.array(IdSchema).min(1).max(20),
-  maxModelCalls: z.number().int().min(1).max(240).optional(),
+  sourceIds: z.array(IdSchema).min(1),
+  maxModelCalls: z.number().int().min(1).optional(),
 });
 
 export const GraphBuildEnqueueRequestSchema =
   GraphBuildPreviewRequestSchema.extend({
-    maxModelCalls: z.number().int().min(1).max(240),
+    maxModelCalls: z.number().int().min(1),
     idempotencyKey: z.string().trim().min(8).max(160),
-    allowCampusEgress: z.literal(true),
   });
 
 export const GraphBuildJobSchema = z.strictObject({
@@ -1147,7 +1146,7 @@ export const GraphExtractionSchema = z.strictObject({
 export const GraphRetrievalPreviewRequestSchema = z.strictObject({
   query: z.string().trim().min(1).max(2_000),
   strategy: KnowledgeRetrievalStrategySchema,
-  sourceIds: z.array(IdSchema).max(20).default([]),
+  sourceIds: z.array(IdSchema).default([]),
   bounds: GraphQueryBoundsSchema.partial().optional(),
 });
 
@@ -1181,7 +1180,7 @@ const ToolBase = {
   }),
   search_knowledge: z.strictObject({
     query: z.string().trim().min(1).max(2_000),
-    sourceIds: z.array(IdSchema).max(50).optional(),
+    sourceIds: z.array(IdSchema).optional(),
     limit: z.number().int().min(1).max(20).default(5),
   }),
   search_verified_memory: z.strictObject({

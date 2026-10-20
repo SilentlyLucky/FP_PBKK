@@ -105,7 +105,7 @@ describe.skipIf(!integrationRequested)(
       await connected.pool.end();
     });
 
-    it("binds idempotent vectors to active versions and filters selected permissions", async () => {
+    it("binds idempotent vectors to active versions while retrieval keeps permission filtering", async () => {
       const connected = requireClient(client);
       const projectId = await createProject(connected);
       const rawByteSha256 = "a".repeat(64);
@@ -228,7 +228,7 @@ describe.skipIf(!integrationRequested)(
       });
       expect(
         await embeddingEvents(connected, projectId, localSource.sourceId),
-      ).toEqual([]);
+      ).toHaveLength(1);
       expect(localSource).toMatchObject({
         rawByteSha256: null,
         rawByteSize: null,
@@ -238,16 +238,13 @@ describe.skipIf(!integrationRequested)(
         projectId,
         localSource.versionId,
       );
-      // Model a stale or imported index row to prove retrieval itself still
-      // applies the source permission check even when rows exist in the table.
-      await connected.db.insert(schema.knowledgeChunkEmbeddings).values({
+      await upsertKnowledgeChunkEmbedding(connected.db, {
         projectId,
         documentVersionId: localSource.versionId,
         chunkId: localChunk.id,
-        profileId: first.profileId,
-        profileChecksum: first.profileChecksum,
         chunkChecksum: localChunk.contentHash,
-        embedding: unitVector(0),
+        profile,
+        vector: unitVector(0),
       });
       const selectedResults = await searchKnowledgeEmbeddings(connected.db, {
         projectId,
@@ -334,7 +331,7 @@ describe.skipIf(!integrationRequested)(
       });
       expect(
         await embeddingEvents(connected, projectId, source.sourceId),
-      ).toHaveLength(2);
+      ).toHaveLength(3);
       await expect(
         upsertKnowledgeChunkEmbedding(connected.db, embeddingInput),
       ).rejects.toMatchObject({ code: "SOURCE_NOT_ELIGIBLE" });
@@ -373,14 +370,14 @@ describe.skipIf(!integrationRequested)(
       expect(revoked.versionId).toBe(rawBytesChanged.versionId);
       expect(
         await embeddingRowCount(connected, projectId, revoked.versionId),
-      ).toBe(0);
+      ).toBe(1);
       expect(
         await listKnowledgeChunksForEmbedding(connected.db, {
           projectId,
           sourceId: source.sourceId,
           documentVersionId: revoked.versionId,
         }),
-      ).toEqual([]);
+      ).toHaveLength(1);
       expect(
         await getKnowledgeEmbeddingReadiness(connected.db, {
           projectId,
@@ -410,7 +407,10 @@ describe.skipIf(!integrationRequested)(
           profile,
           vector: unitVector(0),
         }),
-      ).rejects.toMatchObject({ code: "SOURCE_PERMISSION_REQUIRED" });
+      ).resolves.toMatchObject({
+        documentVersionId: revoked.versionId,
+        chunkId: revokedChunk.id,
+      });
       expect(
         await searchKnowledgeEmbeddings(connected.db, {
           projectId,
@@ -428,7 +428,7 @@ describe.skipIf(!integrationRequested)(
       );
       expect(
         await embeddingEvents(connected, projectId, source.sourceId),
-      ).toHaveLength(3);
+      ).toHaveLength(5);
       expect(
         await listKnowledgeChunksForEmbedding(connected.db, {
           projectId,
@@ -784,8 +784,8 @@ describe.skipIf(!integrationRequested)(
         profiles: [],
       });
       expect(bySourceId.get(blockedSource.sourceId)).toMatchObject({
-        status: "blocked",
-        reason: "source_permission_not_granted",
+        status: "not_indexed",
+        reason: null,
         profiles: [],
       });
       expect(bySourceId.get(staleSource.sourceId)).toMatchObject({

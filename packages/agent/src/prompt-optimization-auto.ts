@@ -446,6 +446,7 @@ export interface PromptOptimizationAutoOptions {
   invokeOptimizer: (
     text: string,
     signal: AbortSignal,
+    analysisInput?: Record<string, unknown>,
   ) => Promise<OptimizationInvocation>;
   invokeTarget: (
     text: string,
@@ -520,8 +521,12 @@ export async function optimizePromptAutomatically(
   const optimizerCalls: Array<
     Pick<OptimizationInvocation, "responseModel" | "usage" | "elapsedMs">
   > = [];
-  const trackedOptimizer = async (text: string, signal: AbortSignal) => {
-    const response = await options.invokeOptimizer(text, signal);
+  const trackedOptimizer = async (
+    text: string,
+    signal: AbortSignal,
+    analysisInput?: Record<string, unknown>,
+  ) => {
+    const response = await options.invokeOptimizer(text, signal, analysisInput);
     optimizerCalls.push({
       responseModel: response.responseModel,
       usage: response.usage,
@@ -1095,7 +1100,25 @@ export async function optimizePromptAutomatically(
         candidateIds,
         internalCaseIds,
       });
-      const response = await trackedOptimizer(request, context.signal);
+      const analysisInput = {
+        requestCharacters: request.length,
+        requestFingerprint: sha256Text(request),
+        promptCharacters: options.originalPrompt.length,
+        objectiveCharacters: options.request.objective.length,
+        invariantCount: options.invariants.length,
+        testCaseCount: testCases.length,
+        baselineResultCount: baselineCaseResults.length,
+        evaluationEvidenceCount: evaluationEvidence.length,
+        selectedSourceCount: sourceIds.length,
+        historySummaryCount: options.history.length,
+        clarificationCount: options.clarificationContext?.length ?? 0,
+        priorToolResults: context.priorToolSummaries,
+      };
+      const response = await trackedOptimizer(
+        request,
+        context.signal,
+        analysisInput,
+      );
       const envelope = parseModelJson(response.text, DecisionSchema);
       for (const call of envelope.toolCalls) {
         if (

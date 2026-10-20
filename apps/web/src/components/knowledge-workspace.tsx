@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ExternalLink,
   FileText,
   GitBranch,
+  MoreHorizontal,
   RefreshCw,
   Search,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import { useProjectScope } from "@/components/project-scope";
+import { KnowledgeGraphExplorer } from "@/components/knowledge-graph-explorer";
 import { LocalSourceBrowser } from "@/components/local-source-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,32 +46,16 @@ interface SourceSummary {
   extractStatus: string;
   chunkCount: number;
   sourceRef?: string | null;
-  semanticReadiness: SemanticIndexReadiness | null;
-}
-
-interface SemanticIndexReadiness {
-  documentVersionId: string | null;
-  chunkCount: number;
-  staleEmbeddingCount: number;
-  status: "ready" | "partial" | "stale" | "not_indexed" | "blocked";
-  reason: "source_permission_not_granted" | "source_version_unavailable" | null;
-  retrievalProfileCompatibility: "not_verified";
-  profiles: Array<{
-    profileId: string;
-    profileChecksum: string;
-    provider: string;
-    requestedModel: string;
-    observedModel: string;
-    modelDigest: string | null;
-    dimensions: number;
-    chunkingVersion: string;
-    preprocessingVersion: string;
-    queryTemplateVersion: string;
-    documentTemplateVersion: string;
-    chunkCount: number;
-    embeddedChunkCount: number;
-    status: "ready" | "partial";
-  }>;
+  semanticReadiness?: {
+    status: string;
+    profiles?: Array<{
+      requestedModel: string;
+      observedModel: string;
+      chunkCount: number;
+      embeddedChunkCount: number;
+      status: string;
+    }>;
+  } | null;
 }
 
 interface SourceChunkPreview {
@@ -282,6 +269,124 @@ const activeBuildStates = new Set([
 ]);
 const MAX_SOURCE_BYTES = 98_304;
 const MAX_PDF_FILE_BYTES = 5_242_880;
+const RELATION_MAP_LIMIT = 16;
+
+interface RelationMapNode {
+  key: string;
+  label: string;
+  type: string;
+  x: number;
+  y: number;
+}
+
+interface RelationMapEdge {
+  assertion: AssertionSummary;
+  source: RelationMapNode;
+  target: RelationMapNode;
+  path: string;
+}
+
+function createRelationMap(assertions: AssertionSummary[]) {
+  const displayedAssertions = assertions.slice(0, RELATION_MAP_LIMIT);
+  const rawNodes = new Map<
+    string,
+    { key: string; label: string; type: string }
+  >();
+  const keyFor = (label: string, type: string) => JSON.stringify([type, label]);
+
+  for (const assertion of displayedAssertions) {
+    const subjectKey = keyFor(assertion.subject, assertion.subjectType);
+    const objectKey = keyFor(assertion.object, assertion.objectType);
+    rawNodes.set(subjectKey, {
+      key: subjectKey,
+      label: assertion.subject,
+      type: assertion.subjectType,
+    });
+    rawNodes.set(objectKey, {
+      key: objectKey,
+      label: assertion.object,
+      type: assertion.objectType,
+    });
+  }
+
+  const nodes = Array.from(rawNodes.values()).map((node, index, allNodes) => {
+    const angle = -Math.PI / 2 + (2 * Math.PI * index) / allNodes.length;
+    return {
+      ...node,
+      x: 500 + Math.cos(angle) * 290,
+      y: 300 + Math.sin(angle) * 180,
+    };
+  });
+  for (let iteration = 0; iteration < 90; iteration += 1) {
+    for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < nodes.length;
+        rightIndex += 1
+      ) {
+        const left = nodes[leftIndex];
+        const right = nodes[rightIndex];
+        if (!left || !right) continue;
+        const dx = right.x - left.x;
+        const dy = right.y - left.y;
+        const distance = Math.max(Math.hypot(dx, dy), 0.1);
+        const minimumDistance = 100;
+        if (distance >= minimumDistance) continue;
+        const separation = ((minimumDistance - distance) / distance) * 0.22;
+        left.x -= dx * separation;
+        left.y -= dy * separation;
+        right.x += dx * separation;
+        right.y += dy * separation;
+      }
+    }
+    for (const node of nodes) {
+      node.x = Math.min(950, Math.max(50, node.x));
+      node.y = Math.min(550, Math.max(50, node.y));
+    }
+  }
+  const nodeByKey = new Map(nodes.map((node) => [node.key, node]));
+  const edges = displayedAssertions
+    .map((assertion, index) => {
+      const source = nodeByKey.get(
+        keyFor(assertion.subject, assertion.subjectType),
+      );
+      const target = nodeByKey.get(
+        keyFor(assertion.object, assertion.objectType),
+      );
+      if (!source || !target) return null;
+
+      if (source.key === target.key) {
+        return {
+          assertion,
+          source,
+          target,
+          path: `M ${source.x - 16} ${source.y - 32} C ${source.x - 90} ${source.y - 130}, ${source.x + 90} ${source.y - 130}, ${source.x + 16} ${source.y - 32}`,
+        };
+      }
+
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const length = Math.hypot(dx, dy);
+      const unitX = dx / length;
+      const unitY = dy / length;
+      const startX = source.x + unitX * 42;
+      const startY = source.y + unitY * 42;
+      const endX = target.x - unitX * 48;
+      const endY = target.y - unitY * 48;
+      const offset = ((index % 5) - 2) * 13;
+      const controlX = (startX + endX) / 2 - unitY * offset;
+      const controlY = (startY + endY) / 2 + unitX * offset;
+      return {
+        assertion,
+        source,
+        target,
+        path: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
+      };
+    })
+    .filter((edge): edge is RelationMapEdge => edge !== null);
+
+  return { nodes, edges, displayedCount: displayedAssertions.length };
+}
 
 interface GraphSnapshotOption {
   id: string;
@@ -314,33 +419,6 @@ function buildStateLabel(state: string): string {
     cancelled: "Dibatalkan",
   };
   return labels[state] ?? state;
-}
-
-function semanticIndexStatusLabel(
-  readiness: SemanticIndexReadiness | null,
-): string {
-  if (!readiness) return "Status belum tersedia";
-  if (readiness.status === "blocked")
-    return readiness.reason === "source_permission_not_granted"
-      ? "Diblokir oleh izin sumber"
-      : "Sumber belum siap diindeks";
-  const labels: Record<SemanticIndexReadiness["status"], string> = {
-    ready: "Lengkap pada profil tersimpan",
-    partial: "Parsial pada profil tersimpan",
-    stale: "Hanya indeks versi lama",
-    not_indexed: "Belum diindeks",
-    blocked: "Diblokir",
-  };
-  return labels[readiness.status];
-}
-
-function semanticIndexStatusVariant(
-  readiness: SemanticIndexReadiness | null,
-): "success" | "warning" | "muted" | "danger" {
-  if (readiness?.status === "ready") return "success";
-  if (readiness?.status === "partial" || readiness?.status === "stale")
-    return "warning";
-  return "muted";
 }
 
 function statusVariant(
@@ -425,8 +503,22 @@ export function KnowledgeWorkspace() {
   const [permissionMessage, setPermissionMessage] = useState<string | null>(
     null,
   );
-  const [sourceMode, setSourceMode] = useState<"paste" | "upload">("paste");
+  const [sourceMode, setSourceMode] = useState<"paste" | "upload">("upload");
+  const [sourceFormOpen, setSourceFormOpen] = useState(false);
+  const sourceDialogRef = useRef<HTMLDialogElement>(null);
+  const sourceReturnFocusRef = useRef<HTMLElement | null>(null);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [localImportOpen, setLocalImportOpen] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<"files" | "relations">(
+    "files",
+  );
+  const [selectedRelationId, setSelectedRelationId] = useState<string | null>(
+    null,
+  );
+  const [relationPage, setRelationPage] = useState(0);
   const [sourceSearch, setSourceSearch] = useState("");
+  const [sourceStatusFilter, setSourceStatusFilter] = useState("all");
+  const [sourceTypeFilter, setSourceTypeFilter] = useState("all");
   const [sourcePreview, setSourcePreview] = useState<{
     projectId: string;
     source: SourceDetailPreview;
@@ -439,10 +531,10 @@ export function KnowledgeWorkspace() {
   );
   const [pasteName, setPasteName] = useState("Catatan baru.md");
   const [pasteContent, setPasteContent] = useState("");
+  const [sourcePermission, setSourcePermission] = useState<Permission>("local_only");
   const [vaultPath, setVaultPath] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sourcePermission, setSourcePermission] =
-    useState<Permission>("local_only");
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [replaceSourceId, setReplaceSourceId] = useState("");
   const [sourceBusy, setSourceBusy] = useState(false);
   const [buildSelections, setBuildSelections] = useState<
@@ -453,7 +545,6 @@ export function KnowledgeWorkspace() {
     null,
   );
   const [maxModelCalls, setMaxModelCalls] = useState(0);
-  const [allowCampusEgress, setAllowCampusEgress] = useState(false);
   const [buildBusy, setBuildBusy] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
@@ -489,6 +580,17 @@ export function KnowledgeWorkspace() {
   const listedSources = sources.filter((source) => !source.deleted);
   const normalizedSourceSearch = sourceSearch.trim().toLowerCase();
   const visibleSources = listedSources.filter((source) => {
+    const isLexicallyIndexed = source.extractStatus === "ready" && source.chunkCount > 0;
+    const statusMatches =
+      sourceStatusFilter === "all" ||
+      (sourceStatusFilter === "indexed" && isLexicallyIndexed) ||
+      (sourceStatusFilter === "pending" && !isLexicallyIndexed) ||
+      (sourceStatusFilter === "review" && !source.eligible) ||
+      (sourceStatusFilter === "local" && source.permission === "local_only");
+    const typeMatches =
+      sourceTypeFilter === "all" ||
+      (source.contentType ?? source.sourceKind) === sourceTypeFilter;
+    if (!statusMatches || !typeMatches) return false;
     if (!normalizedSourceSearch) return true;
     return [source.displayName, source.sourceKind, source.contentType]
       .filter(Boolean)
@@ -497,23 +599,68 @@ export function KnowledgeWorkspace() {
   const currentSources = sources.filter(
     (source) => !source.deleted && source.eligible,
   );
-  const allowedSources = currentSources.filter(
-    (source) => source.permission === "campus_indexer_allowed",
+  const sourcesNeedingReview = listedSources.filter(
+    (source) => !source.eligible,
   );
-  const lexicalReadySourceCount = currentSources.filter(
-    (source) => source.chunkCount > 0,
-  ).length;
-  const semanticCoveredSourceCount = allowedSources.filter((source) =>
-    ["ready", "partial"].includes(source.semanticReadiness?.status ?? ""),
-  ).length;
-  const semanticIndexedProfileCount = allowedSources.reduce(
-    (total, source) => total + (source.semanticReadiness?.profiles.length ?? 0),
-    0,
+  const activeAssertions = useMemo(
+    () =>
+      (data?.assertions ?? []).filter(
+        (assertion) =>
+          assertion.eligible &&
+          assertion.status === "extracted_supported" &&
+          assertion.evidence.length > 0,
+      ),
+    [data?.assertions],
   );
+  const relationPageCount = Math.max(
+    1,
+    Math.ceil(activeAssertions.length / RELATION_MAP_LIMIT),
+  );
+  const currentRelationPage = Math.min(relationPage, relationPageCount - 1);
+  const relationMap = useMemo(() => {
+    const start = currentRelationPage * RELATION_MAP_LIMIT;
+    return createRelationMap(
+      activeAssertions.slice(start, start + RELATION_MAP_LIMIT),
+    );
+  }, [activeAssertions, currentRelationPage]);
+  const displayedAssertions = relationMap.edges.map((edge) => edge.assertion);
+  const relationRangeStart = currentRelationPage * RELATION_MAP_LIMIT + 1;
+  const relationRangeEnd =
+    currentRelationPage * RELATION_MAP_LIMIT + displayedAssertions.length;
+  const selectedRelation =
+    displayedAssertions.find(
+      (assertion) => assertion.id === selectedRelationId,
+    ) ??
+    displayedAssertions[0] ??
+    null;
+  const activeGraphSnapshot = availableGraphSnapshots.find(
+    (item) => item.active,
+  );
+  const graphIsStale = Boolean(
+    data &&
+    (data.readiness.snapshot.status === "stale" ||
+      (activeGraphSnapshot && !activeGraphSnapshot.current)),
+  );
+
+  useEffect(() => {
+    setRelationPage(0);
+    setSelectedRelationId(null);
+  }, [activeProjectId]);
+
+  function navigateRelationPage(offset: number) {
+    const nextPage = Math.min(
+      relationPageCount - 1,
+      Math.max(0, currentRelationPage + offset),
+    );
+    setRelationPage(nextPage);
+    setSelectedRelationId(
+      activeAssertions[nextPage * RELATION_MAP_LIMIT]?.id ?? null,
+    );
+  }
+
   const buildSourceIds = buildSelections[activeProjectId ?? ""] ?? [];
   const retrievalSourceIds = (retrievalSelections[activeProjectId ?? ""] ?? [])
-    .filter((id) => currentSources.some((source) => source.id === id))
-    .slice(0, 20);
+    .filter((id) => currentSources.some((source) => source.id === id));
   const activePreview =
     retrievalPreview?.projectId === activeProjectId
       ? retrievalPreview.result
@@ -522,12 +669,11 @@ export function KnowledgeWorkspace() {
   const buildInProgress = Boolean(
     latestBuild && activeBuildStates.has(latestBuild.state),
   );
-  const egressReady = Boolean(
+  const buildReady = Boolean(
     buildPreview?.projectId === activeProjectId &&
     buildPreview.providerReady &&
     buildPreview.ready &&
-    buildSourceIds.length > 0 &&
-    allowCampusEgress,
+    buildSourceIds.length > 0,
   );
 
   const loadReferencePack = useCallback(async (projectId: string) => {
@@ -664,26 +810,46 @@ export function KnowledgeWorkspace() {
     return () => window.clearInterval(timer);
   }, [activeProjectId, buildInProgress, refresh]);
 
+  useEffect(() => {
+    const dialog = sourceDialogRef.current;
+    if (!dialog) return;
+
+    if (sourceFormOpen && !dialog.open) {
+      dialog.showModal();
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(
+            sourceMode === "upload" ? "source-file" : "source-name",
+          )
+          ?.focus();
+      });
+    } else if (!sourceFormOpen && dialog.open) {
+      dialog.close();
+      const returnFocus = sourceReturnFocusRef.current;
+      if (returnFocus?.isConnected) {
+        window.requestAnimationFrame(() => returnFocus.focus());
+      }
+    }
+  }, [sourceFormOpen, sourceMode]);
+
   const selectedBuildSources = buildSourceIds
-    .filter((id) => allowedSources.some((source) => source.id === id))
-    .slice(0, 20);
+    .filter((id) => currentSources.some((source) => source.id === id));
 
   function toggleBuildSource(sourceId: string, checked: boolean) {
     if (!activeProjectId) return;
     setBuildSelections((current) => {
       const previous = (current[activeProjectId] ?? []).filter((id) =>
-        allowedSources.some((source) => source.id === id),
+        currentSources.some((source) => source.id === id),
       );
       return {
         ...current,
         [activeProjectId]: checked
-          ? [...new Set([...previous, sourceId])].slice(0, 20)
+          ? [...new Set([...previous, sourceId])]
           : previous.filter((id) => id !== sourceId),
       };
     });
     setBuildPreview(null);
     setBuildIdempotencyKey(null);
-    setAllowCampusEgress(false);
   }
 
   function toggleRetrievalSource(sourceId: string, checked: boolean) {
@@ -695,7 +861,7 @@ export function KnowledgeWorkspace() {
       return {
         ...current,
         [activeProjectId]: checked
-          ? [...new Set([...previous, sourceId])].slice(0, 20)
+          ? [...new Set([...previous, sourceId])]
           : previous.filter((id) => id !== sourceId),
       };
     });
@@ -722,18 +888,15 @@ export function KnowledgeWorkspace() {
     form.set("permission", sourcePermission);
     if (sourceMode === "upload") {
       if (!selectedFile) {
-        setSourceError("Pilih file teks, Markdown, atau PDF terlebih dahulu.");
+        setSourceError("Pilih file sumber terlebih dahulu.");
         setSourceBusy(false);
         return;
       }
-      const isPdf = /\.pdf$/iu.test(selectedFile.name);
-      if (!/\.(txt|md|markdown|pdf)$/iu.test(selectedFile.name)) {
-        setSourceError("Pilih file .txt, .md, .markdown, atau .pdf.");
-        setSourceBusy(false);
-        return;
-      }
+      const isPdf =
+        /\.pdf$/iu.test(selectedFile.name) ||
+        selectedFile.type.toLowerCase() === "application/pdf";
       if (isPdf && selectedFile.type.toLowerCase() !== "application/pdf") {
-        setSourceError("File .pdf harus memiliki MIME type application/pdf.");
+        setSourceError("File PDF harus memiliki MIME type application/pdf.");
         setSourceBusy(false);
         return;
       }
@@ -747,13 +910,6 @@ export function KnowledgeWorkspace() {
       }
       form.set("file", selectedFile);
     } else {
-      if (!/\.(txt|md|markdown)$/iu.test(pasteName.trim())) {
-        setSourceError(
-          "Nama sumber paste harus berakhiran .txt, .md, atau .markdown.",
-        );
-        setSourceBusy(false);
-        return;
-      }
       const contentBytes = new TextEncoder().encode(pasteContent).byteLength;
       if (contentBytes > MAX_SOURCE_BYTES) {
         setSourceError(
@@ -789,7 +945,9 @@ export function KnowledgeWorkspace() {
       if (!response.ok)
         throw new Error(errorMessage(result, "Sumber tidak dapat disimpan."));
       setSourceMessage(
-        selectedFile && /\.pdf$/iu.test(selectedFile.name)
+        selectedFile &&
+          (/\.pdf$/iu.test(selectedFile.name) ||
+            selectedFile.type.toLowerCase() === "application/pdf")
           ? "PDF disimpan. Hanya lapisan teks yang diekstrak; OCR tidak dilakukan."
           : replaceSourceId
             ? "Versi sumber baru tersimpan."
@@ -798,10 +956,11 @@ export function KnowledgeWorkspace() {
       setPasteContent("");
       setVaultPath("");
       setSelectedFile(null);
+      setFileInputKey((current) => current + 1);
       setReplaceSourceId("");
       setBuildPreview(null);
       setBuildIdempotencyKey(null);
-      setAllowCampusEgress(false);
+      setSourceFormOpen(false);
       await refresh(false);
     } catch (cause) {
       setSourceError(
@@ -812,46 +971,41 @@ export function KnowledgeWorkspace() {
     }
   }
 
-  async function changePermission(
+  function openVersionEditor(
     source: SourceSummary,
-    permission: Permission,
+    returnFocus?: HTMLElement | null,
   ) {
-    if (!activeProjectId) return;
-    setPermissionError(null);
-    setPermissionMessage(null);
-    try {
-      const response = await fetch(
-        `/api/projects/${activeProjectId}/knowledge/sources/${source.id}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ permission }),
-        },
-      );
-      const result = (await response.json()) as {
-        error?: string;
-        message?: string;
-      };
-      if (!response.ok)
-        throw new Error(
-          errorMessage(result, "Izin sumber tidak dapat diperbarui."),
-        );
-      setPermissionMessage(
-        permission === "campus_indexer_allowed"
-          ? "Izin Campus Gateway diperbarui. Build masih memerlukan persetujuan egress."
-          : "Sumber dibatasi ke local-only; evidence Campus terkait tidak lagi eligible.",
-      );
-      setBuildPreview(null);
-      setBuildIdempotencyKey(null);
-      setAllowCampusEgress(false);
-      await refresh(false);
-    } catch (cause) {
-      setPermissionError(
-        cause instanceof Error
-          ? cause.message
-          : "Izin sumber tidak dapat diperbarui.",
-      );
+    sourceReturnFocusRef.current =
+      returnFocus ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    setReplaceSourceId(source.id);
+    setSourcePermission(source.permission);
+    setSourceMode("upload");
+    setSelectedFile(null);
+    setFileInputKey((current) => current + 1);
+    setPasteName(source.displayName);
+    setPasteContent("");
+    setVaultPath("");
+    setSourceError(null);
+    setSourceMessage(null);
+    setSourceFormOpen(true);
+  }
+
+  function showGraphBuildTools() {
+    const disclosure = document.getElementById(
+      "knowledge-advanced-tools",
+    ) as HTMLDetailsElement | null;
+    if (disclosure) {
+      disclosure.open = true;
+      setAdvancedToolsOpen(true);
     }
+    window.requestAnimationFrame(() =>
+      document
+        .getElementById("knowledge-graph-build")
+        ?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
   }
 
   async function previewSource(source: SourceSummary) {
@@ -914,7 +1068,6 @@ export function KnowledgeWorkspace() {
       setPermissionMessage("Sumber dihapus dan readiness proyek diperbarui.");
       setBuildPreview(null);
       setBuildIdempotencyKey(null);
-      setAllowCampusEgress(false);
       await refresh(false);
     } catch (cause) {
       setPermissionError(
@@ -933,8 +1086,6 @@ export function KnowledgeWorkspace() {
         `/api/projects/${activeProjectId}/knowledge/reference-pack`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ permission: "local_only" }),
         },
       );
       const result = (await response.json()) as ReferenceImportPayload;
@@ -945,7 +1096,7 @@ export function KnowledgeWorkspace() {
       const imported = result.imported ?? 0;
       const skipped = result.skipped ?? 0;
       setReferenceImportMessage(
-        `${imported} sumber ditambahkan lokal, ${skipped} dilewati. Paket ${result.packId ?? "tidak tersedia"}. Tidak ada egress ke Campus.`,
+        `${imported} sumber ditambahkan, ${skipped} dilewati. Paket ${result.packId ?? "tidak tersedia"}. Indexing berjalan otomatis saat worker memproses sumber.`,
       );
       await refresh(false);
     } catch (cause) {
@@ -961,9 +1112,7 @@ export function KnowledgeWorkspace() {
 
   async function previewBuild() {
     if (!activeProjectId || !selectedBuildSources.length) {
-      setBuildError(
-        "Pilih minimal satu sumber yang mengizinkan campus indexer.",
-      );
+      setBuildError("Pilih minimal satu sumber untuk build.");
       return;
     }
     setBuildBusy(true);
@@ -989,7 +1138,6 @@ export function KnowledgeWorkspace() {
       setBuildPreview(next);
       setBuildIdempotencyKey(crypto.randomUUID());
       setMaxModelCalls(next.selectedMaxModelCalls);
-      setAllowCampusEgress(false);
     } catch (cause) {
       setBuildPreview(null);
       setBuildIdempotencyKey(null);
@@ -1002,8 +1150,8 @@ export function KnowledgeWorkspace() {
   }
 
   async function enqueueBuild() {
-    if (!activeProjectId || !buildPreview || !allowCampusEgress) {
-      setBuildError("Tinjau preview lalu setujui egress sumber untuk enqueue.");
+    if (!activeProjectId || !buildPreview) {
+      setBuildError("Tinjau preview sumber terlebih dahulu untuk enqueue.");
       return;
     }
     setBuildBusy(true);
@@ -1020,7 +1168,6 @@ export function KnowledgeWorkspace() {
             sourceIds: selectedBuildSources,
             maxModelCalls,
             idempotencyKey,
-            allowCampusEgress: true,
           }),
         },
       );
@@ -1038,7 +1185,6 @@ export function KnowledgeWorkspace() {
       );
       setBuildPreview(null);
       setBuildIdempotencyKey(null);
-      setAllowCampusEgress(false);
       await refresh(false);
     } catch (cause) {
       setBuildError(
@@ -1188,6 +1334,38 @@ export function KnowledgeWorkspace() {
     (data?.snapshotId
       ? `Snapshot ${data.snapshotId.slice(0, 8)}`
       : "Belum ada snapshot");
+  const indexedSourceCount = listedSources.filter(
+    (source) => source.extractStatus === "ready" && source.chunkCount > 0,
+  ).length;
+  const semanticReadyCount = listedSources.filter(
+    (source) => source.semanticReadiness?.status === "ready",
+  ).length;
+  const coverage = data?.readiness.snapshot.coverage ?? {};
+  const graphEntityCount = Number(
+    coverage.entityCount ?? coverage.nodeCount ?? 0,
+  );
+  const graphRelationCount = Number(
+    coverage.supportedCount ?? coverage.linkCount ?? coverage.assertionCount ?? 0,
+  );
+  const graphHealthLabel =
+    knowledgeStatus ??
+    (data?.readiness.build.state === "failed"
+      ? "Gagal"
+      : data?.readiness.build.state === "queued" ||
+          data?.readiness.build.state === "running"
+        ? "Sedang diindeks"
+        : data?.readiness.snapshot.status === "stale"
+          ? "Graph perlu diperbarui"
+          : data?.readiness.snapshot.status === "active"
+            ? "Siap"
+            : "Belum dibangun");
+  const sourceSummaryNotice = !data
+    ? (knowledgeStatus ?? "Status sumber belum tersedia.")
+    : sourcesNeedingReview.length
+      ? `${sourcesNeedingReview.length} sumber perlu ditinjau sebelum aktif.`
+      : currentSources.length
+        ? null
+        : "Belum ada sumber. Tambahkan file atau tempel teks.";
 
   return (
     <div className={`knowledge-workspace ${styles.workspace}`}>
@@ -1198,31 +1376,620 @@ export function KnowledgeWorkspace() {
       ) : null}
       {!activeProjectId ? (
         <p className="helper" role="status">
-          Pilih proyek untuk melihat readiness dan mengelola sumber knowledge.
+          Pilih proyek untuk melihat dan mengelola file sumber.
         </p>
       ) : null}
-      <div className={styles.toolbar}>
-        <div>
-          <span className={styles.eyebrow}>Knowledge proyek</span>
-          <p className="helper">
-            {activeProject
-              ? `Sumber, snapshot, dan retrieval untuk ${activeProject.name}.`
-              : "Pilih proyek untuk melihat sumber dan status retrieval."}
-          </p>
+      <section className={styles.sourceOverview} aria-label="Ringkasan sumber">
+        <div className={styles.overviewHeading}>
+          <span className="helper">Ringkasan basis pengetahuan proyek</span>
+          <Badge variant={graphHealthLabel === "Siap" ? "success" : graphHealthLabel === "Gagal" ? "danger" : graphHealthLabel === "Belum dibangun" ? "muted" : "warning"}>
+            {graphHealthLabel}
+          </Badge>
         </div>
-        <div className={styles.toolbarActions}>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!activeProjectId}
-            onClick={() =>
-              document
-                .getElementById("knowledge-add-source")
-                ?.scrollIntoView({ block: "start" })
-            }
-          >
-            <Upload aria-hidden="true" size={15} /> Tambah sumber
-          </Button>
+        <div className={styles.overviewMetrics}>
+          <div><strong>{data ? listedSources.length : "—"}</strong><span>Total sumber</span></div>
+          <div><strong>{data ? indexedSourceCount : "—"}</strong><span>Lexical · {data ? semanticReadyCount : "—"} semantik siap</span></div>
+          <div><strong>{data?.readiness.snapshot.status === "active" ? graphEntityCount : "—"}</strong><span>Entitas graph</span></div>
+          <div><strong>{data?.readiness.snapshot.status === "active" ? graphRelationCount : "—"}</strong><span>Relasi graph</span></div>
+        </div>
+        <Button
+          type="button"
+          disabled={!activeProjectId}
+          aria-expanded={sourceFormOpen}
+          aria-controls={sourceFormOpen ? "knowledge-add-source" : undefined}
+          onClick={(event) => {
+            sourceReturnFocusRef.current = event.currentTarget;
+            setReplaceSourceId("");
+            setSourcePermission("local_only");
+            setSelectedFile(null);
+            setFileInputKey((current) => current + 1);
+            setSourceMode("upload");
+            setPasteName("Catatan baru.md");
+            setPasteContent("");
+            setVaultPath("");
+            setSourceError(null);
+            setSourceMessage(null);
+            setSourceFormOpen(true);
+          }}
+        >
+          <Upload aria-hidden="true" size={16} /> Tambah sumber
+        </Button>
+      </section>
+
+      {sourceMessage ? (
+        <p className={`success-message ${styles.sourceFeedback}`} role="status">
+          {sourceMessage}
+        </p>
+      ) : null}
+
+      <dialog
+        ref={sourceDialogRef}
+        id="knowledge-add-source"
+        className={styles.sourceDialog}
+        aria-labelledby="knowledge-add-source-title"
+        aria-describedby="knowledge-add-source-description"
+        onCancel={(event) => {
+          event.preventDefault();
+          setSourceFormOpen(false);
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            setSourceFormOpen(false);
+          }
+        }}
+      >
+        <Card>
+          <CardHeader>
+            <div className="card-heading-row">
+              <div>
+                <CardTitle id="knowledge-add-source-title">
+                  {replaceSourceId ? "Ganti versi sumber" : "Tambah sumber"}
+                </CardTitle>
+                <CardDescription id="knowledge-add-source-description">
+                  {replaceSourceId
+                    ? "Unggah file baru untuk menyimpan versi berikutnya."
+                    : "Pilih cara memasukkan sumber, lalu tinjau sebelum disimpan."}
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Tutup form sumber"
+                onClick={() => setSourceFormOpen(false)}
+              >
+                <X aria-hidden="true" size={17} />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div
+              className="form-row source-mode-switch"
+              role="group"
+              aria-label="Pilih cara memasukkan sumber"
+            >
+              <Button
+                type="button"
+                variant={sourceMode === "upload" ? "secondary" : "ghost"}
+                aria-pressed={sourceMode === "upload"}
+                onClick={() => setSourceMode("upload")}
+              >
+                Unggah file
+              </Button>
+              <Button
+                type="button"
+                variant={sourceMode === "paste" ? "secondary" : "ghost"}
+                aria-pressed={sourceMode === "paste"}
+                onClick={() => setSourceMode("paste")}
+              >
+                Tempel teks
+              </Button>
+            </div>
+            <form
+              className={`knowledge-ingest ${styles.sourceForm}`}
+              onSubmit={(event) => void saveSource(event)}
+            >
+              <div className="field">
+                <label htmlFor="source-permission">Izin pemrosesan sumber</label>
+                <select
+                  id="source-permission"
+                  className="select"
+                  value={sourcePermission}
+                  onChange={(event) => setSourcePermission(event.target.value as Permission)}
+                >
+                  <option value="local_only">Hanya perangkat</option>
+                  <option value="campus_indexer_allowed">Izinkan indexer kampus</option>
+                </select>
+                <span className="helper">
+                  Sumber baru tetap di perangkat sampai Anda memilih izin indexer kampus. Izin ini menentukan apakah sumber dapat dipakai membangun Knowledge Graph.
+                </span>
+              </div>
+              {sourceMode === "paste" ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="source-name">Nama sumber</label>
+                    <input
+                      id="source-name"
+                      className="input"
+                      value={pasteName}
+                      onChange={(event) => setPasteName(event.target.value)}
+                      maxLength={240}
+                      required
+                    />
+                    <span className="helper">
+                      Nama ini tampil di daftar sumber.
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="source-content">Teks sumber</label>
+                    <textarea
+                      id="source-content"
+                      className="input source-content-input"
+                      value={pasteContent}
+                      onChange={(event) => setPasteContent(event.target.value)}
+                      maxLength={MAX_SOURCE_BYTES}
+                      required
+                      placeholder="Tempel isi dokumen yang ingin digunakan sebagai sumber."
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="field">
+                  <label htmlFor="source-file">File sumber</label>
+                  <label className={styles.filePicker} htmlFor="source-file">
+                    <span className={styles.filePickerAction}>Pilih file</span>
+                    <span className={styles.filePickerName} aria-live="polite">
+                      {selectedFile?.name ?? "Belum ada file dipilih"}
+                    </span>
+                    <input
+                      key={fileInputKey}
+                      id="source-file"
+                      className={styles.filePickerInput}
+                      type="file"
+                      aria-label="File sumber"
+                      aria-describedby="source-file-help"
+                      onChange={(event) =>
+                        setSelectedFile(event.target.files?.[0] ?? null)
+                      }
+                    />
+                  </label>
+                  <span id="source-file-help" className="helper">
+                    Ekstensi bebas. File selain PDF harus berisi teks yang dapat
+                    dibaca.
+                  </span>
+                </div>
+              )}
+              <details className={styles.sourceOptions}>
+                <summary>Opsi tambahan</summary>
+                <div className={styles.sourceOptionsContent}>
+                  <div className="field">
+                    <label htmlFor="source-vault-path">
+                      Path catatan Markdown{" "}
+                      <span className="helper">(opsional)</span>
+                    </label>
+                    <input
+                      id="source-vault-path"
+                      className="input"
+                      value={vaultPath}
+                      onChange={(event) => setVaultPath(event.target.value)}
+                      maxLength={500}
+                      placeholder="notes/overview.md"
+                    />
+                    <span className="helper">
+                      Disimpan sebagai metadata; file lokal tidak dibuka.
+                    </span>
+                  </div>
+                  {sources.some((source) => !source.deleted) ? (
+                    <div className="field">
+                      <label htmlFor="replace-source">
+                        Simpan sebagai versi baru{" "}
+                        <span className="helper">(opsional)</span>
+                      </label>
+                      <select
+                        id="replace-source"
+                        className="select"
+                        value={replaceSourceId}
+                        onChange={(event) =>
+                          {
+                            const nextId = event.target.value;
+                            setReplaceSourceId(nextId);
+                            const nextSource = sources.find((source) => source.id === nextId);
+                            setSourcePermission(nextSource?.permission ?? "local_only");
+                          }
+                        }
+                      >
+                        <option value="">Buat sumber baru</option>
+                        {sources
+                          .filter((source) => !source.deleted)
+                          .map((source) => (
+                            <option key={source.id} value={source.id}>
+                              {source.displayName} · v{source.version}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  ) : null}
+                  <details className={styles.sourceLimits}>
+                    <summary>Batas dan dukungan file</summary>
+                    <p className="helper">
+                      Ekstensi bebas. File selain PDF harus berupa teks UTF-8;
+                      CSV dan JSON dibaca sebagai teks biasa. PDF perlu lapisan
+                      teks, OCR tidak dilakukan, maksimal 50 halaman dan{" "}
+                      {MAX_PDF_FILE_BYTES.toLocaleString("id-ID")} byte. Teks
+                      dibatasi {MAX_SOURCE_BYTES.toLocaleString("id-ID")} byte.
+                    </p>
+                  </details>
+                </div>
+              </details>
+              {sourceError ? (
+                <p className="error-message" role="alert">
+                  {sourceError}
+                </p>
+              ) : null}
+              <div className={styles.sourceFormActions}>
+                <Button
+                  type="submit"
+                  disabled={sourceBusy || !activeProjectId || !data}
+                >
+                  <Upload aria-hidden="true" size={15} />
+                  {sourceBusy
+                    ? "Menyimpan…"
+                    : replaceSourceId
+                      ? "Simpan versi baru"
+                      : "Simpan sumber"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setReplaceSourceId("");
+                    setSourceFormOpen(false);
+                  }}
+                >
+                  Batal
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </dialog>
+
+      <div
+        className={styles.viewSwitch}
+        role="group"
+        aria-label="Tampilan sumber"
+      >
+        <Button
+          type="button"
+          variant={workspaceView === "files" ? "secondary" : "ghost"}
+          aria-pressed={workspaceView === "files"}
+          onClick={() => setWorkspaceView("files")}
+        >
+          File <span>{listedSources.length}</span>
+        </Button>
+        <Button
+          type="button"
+          variant={workspaceView === "relations" ? "secondary" : "ghost"}
+          aria-pressed={workspaceView === "relations"}
+          onClick={() => setWorkspaceView("relations")}
+        >
+          Peta relasi <span>{activeAssertions.length}</span>
+        </Button>
+      </div>
+
+      {workspaceView === "files" ? (
+        <Card className={styles.sourcesCard}>
+          <CardHeader>
+            <div className="card-heading-row">
+              <div>
+                <CardTitle>File sumber</CardTitle>
+              </div>
+              <div className={styles.sourceTools}>
+                <label className="sr-only" htmlFor="knowledge-source-search">
+                  Cari sumber
+                </label>
+                <div className={styles.searchField}>
+                  <Search aria-hidden="true" size={15} />
+                  <input
+                    id="knowledge-source-search"
+                    type="search"
+                    value={sourceSearch}
+                    onChange={(event) => setSourceSearch(event.target.value)}
+                    placeholder="Cari file…"
+                  />
+                </div>
+                <label className="sr-only" htmlFor="knowledge-source-status">Filter status sumber</label>
+                <select
+                  id="knowledge-source-status"
+                  className="select"
+                  value={sourceStatusFilter}
+                  onChange={(event) => setSourceStatusFilter(event.target.value)}
+                >
+                  <option value="all">Semua status</option>
+                  <option value="indexed">Terindeks</option>
+                  <option value="pending">Belum terindeks</option>
+                  <option value="review">Perlu ditinjau</option>
+                  <option value="local">Hanya perangkat</option>
+                </select>
+                <label className="sr-only" htmlFor="knowledge-source-type">Filter jenis sumber</label>
+                <select
+                  id="knowledge-source-type"
+                  className="select"
+                  value={sourceTypeFilter}
+                  onChange={(event) => setSourceTypeFilter(event.target.value)}
+                >
+                  <option value="all">Semua jenis</option>
+                  {[...new Set(listedSources.map((source) => source.contentType ?? source.sourceKind))].sort().map((kind) => (
+                    <option key={kind} value={kind}>{kind}</option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Muat ulang sumber"
+                  onClick={() => void refresh(true)}
+                  disabled={loading}
+                >
+                  <RefreshCw aria-hidden="true" size={15} />
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {permissionMessage ? (
+              <p className="success-message" role="status">
+                {permissionMessage}
+              </p>
+            ) : null}
+            {permissionError ? (
+              <p className="error-message" role="alert">
+                {permissionError}
+              </p>
+            ) : null}
+            <div className={`${styles.sourceListAndPreview} ${sourcePreview?.projectId === activeProjectId ? styles.withPreview : ""}`}>
+            <div className={styles.sourceListPane}>
+            {visibleSources.length ? (
+              <ul className="knowledge-source-list">
+                {visibleSources.map((source) => (
+                  <li
+                    className={`knowledge-source-card ${styles.compactSourceRow}`}
+                    id={`knowledge-source-${source.id}`}
+                    key={source.id}
+                  >
+                    <div className={styles.sourceRowMain}>
+                      <div className={styles.sourceIdentity}>
+                        <div className="knowledge-source-icon">
+                          <FileText aria-hidden="true" size={17} />
+                        </div>
+                        <div className="knowledge-source-title">
+                          <strong>{source.displayName}</strong>
+                          <span className="helper">
+                            v{source.version} · diperbarui{" "}
+                            {new Date(source.updatedAt).toLocaleDateString(
+                              "id-ID",
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.sourceActionGroup}>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={sourcePreviewBusy === source.id}
+                          onClick={() => void previewSource(source)}
+                        >
+                          <FileText aria-hidden="true" size={14} />
+                          {sourcePreviewBusy === source.id
+                            ? "Memuat…"
+                            : "Pratinjau"}
+                        </Button>
+                        <details className={styles.sourceMoreActions}>
+                          <summary
+                            aria-label={
+                              "Aksi lainnya untuk " + source.displayName
+                            }
+                          >
+                            <MoreHorizontal aria-hidden="true" size={17} />
+                            <span className="sr-only">
+                              Aksi lainnya untuk {source.displayName}
+                            </span>
+                          </summary>
+                          <div className={styles.sourceMoreMenu}>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                const menu =
+                                  event.currentTarget.closest("details");
+                                const summary = menu?.querySelector("summary");
+                                openVersionEditor(
+                                  source,
+                                  summary instanceof HTMLElement
+                                    ? summary
+                                    : null,
+                                );
+                                menu?.removeAttribute("open");
+                              }}
+                            >
+                              Ganti dengan versi baru
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.sourceDeleteAction}
+                              onClick={(event) => {
+                                event.currentTarget
+                                  .closest("details")
+                                  ?.removeAttribute("open");
+                                void removeSource(source);
+                              }}
+                            >
+                              <Trash2 aria-hidden="true" size={14} /> Hapus
+                            </button>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                    <div className={styles.sourceMetaLine}>
+                      <Badge variant="muted">
+                        {source.contentType ?? source.sourceKind}
+                      </Badge>
+                      <Badge variant={source.extractStatus === "ready" && source.chunkCount > 0 ? "success" : "warning"}>
+                        {source.extractStatus === "ready" && source.chunkCount > 0 ? "Terindeks" : source.extractStatus === "failed" ? "Gagal diproses" : "Menunggu indeks"}
+                      </Badge>
+                      <Badge variant={source.semanticReadiness?.status === "ready" ? "success" : "muted"}>
+                        {source.semanticReadiness?.status === "ready" ? "Semantik siap" : "Semantik belum siap"}
+                      </Badge>
+                      <Badge variant={source.permission === "local_only" ? "warning" : "muted"}>
+                        {source.permission === "local_only" ? "Hanya perangkat" : "Izin indeks kampus"}
+                      </Badge>
+                      {!source.eligible ? (
+                        <Badge variant="warning">Perlu ditinjau</Badge>
+                      ) : null}
+                    </div>
+                    {source.semanticReadiness?.profiles?.length ? (
+                      <details className={styles.sourceIndexDetails}>
+                        <summary>Detail indeks</summary>
+                        <div>
+                          <strong>Lengkap pada profil tersimpan</strong>
+                          {source.semanticReadiness.profiles.map((profile, index) => (
+                            <p key={`${profile.requestedModel}-${index}`}>
+                              {profile.requestedModel} → {profile.observedModel} · {profile.embeddedChunkCount}/{profile.chunkCount} chunk · {profile.status === "ready" ? "lengkap" : "sebagian"}
+                            </p>
+                          ))}
+                          <small>Coverage ini menggambarkan indeks tersimpan; kecocokan dengan profil query saat retrieval belum diverifikasi.</small>
+                        </div>
+                      </details>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="empty-state knowledge-empty-state">
+                <div>
+                  <FileText aria-hidden="true" size={22} />
+                  <p>
+                    {listedSources.length && normalizedSourceSearch
+                      ? "Tidak ada sumber yang cocok dengan pencarian."
+                      : !activeProjectId
+                        ? "Pilih proyek untuk melihat sumber."
+                        : loading
+                          ? "Memuat sumber…"
+                          : data
+                            ? "Belum ada sumber pada proyek ini."
+                            : "Sumber belum dapat dimuat."}
+                  </p>
+                  <p className="helper">
+                    {listedSources.length && normalizedSourceSearch
+                      ? "Coba nama atau jenis sumber yang berbeda."
+                      : !activeProjectId
+                        ? "Pilih proyek di bagian atas untuk melihat atau menambahkan sumber."
+                        : "Gunakan Tambah sumber di atas untuk mengunggah file atau menempel teks. File dari folder kerja lokal dapat diimpor dari bagian lanjutan."}
+                  </p>
+                </div>
+              </div>
+            )}
+            {sourcePreviewError ? (
+              <p className="error-message" role="alert">
+                {sourcePreviewError}
+              </p>
+            ) : null}
+            </div>
+            {sourcePreview?.projectId === activeProjectId ? (
+              <section
+                className={styles.sourcePreview}
+                aria-label="Pratinjau sumber terpilih"
+              >
+                <div className={styles.sourcePreviewHeading}>
+                  <div>
+                    <h3>{sourcePreview.source.displayName}</h3>
+                    <p className="helper">
+                      v{sourcePreview.source.version} ·{" "}
+                      {sourcePreview.source.chunks.length} chunk · SHA-256{" "}
+                      {sourcePreview.source.checksum.slice(0, 12)}…
+                    </p>
+                    {sourcePreview.source.sourceMetadata.origin ===
+                      "local_workspace" &&
+                    typeof sourcePreview.source.sourceMetadata.relativePath ===
+                      "string" ? (
+                      <p className="helper">
+                        Asal lokal:{" "}
+                        {sourcePreview.source.sourceMetadata.relativePath}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSourcePreview(null)}
+                  >
+                    Tutup pratinjau
+                  </Button>
+                </div>
+                {sourcePreview.source.chunks.slice(0, 5).map((chunk) => (
+                  <article className={styles.sourcePreviewChunk} key={chunk.id}>
+                    <strong>
+                      {chunk.heading || "Bagian " + (chunk.ordinal + 1)}
+                      {chunk.pageNumber ? " · halaman " + chunk.pageNumber : ""}
+                    </strong>
+                    <p>{chunk.content}</p>
+                  </article>
+                ))}
+                {sourcePreview.source.chunks.length > 5 ? (
+                  <p className="helper">
+                    Menampilkan 5 dari {sourcePreview.source.chunks.length}{" "}
+                    chunk.
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <section className={styles.graphExplorerSection} aria-label="Knowledge Graph">
+          <div className={styles.graphExplorerHeading}>
+            <div>
+              <h2>Knowledge Graph</h2>
+              <p>Jelajahi hubungan yang didukung bukti dari sumber proyek.</p>
+            </div>
+            <Badge variant={graphIsStale ? "warning" : data?.snapshotId ? "success" : "muted"}>
+              {graphHealthLabel}
+            </Badge>
+          </div>
+          <KnowledgeGraphExplorer
+            assertions={activeAssertions}
+            hasSnapshot={Boolean(data?.snapshotId)}
+            isStale={graphIsStale}
+            sourceIds={listedSources.map((source) => source.id)}
+            onOpenSource={(sourceId) => {
+              const source = listedSources.find((item) => item.id === sourceId);
+              if (source) {
+                setWorkspaceView("files");
+                void previewSource(source);
+              }
+            }}
+            onBuildGraph={showGraphBuildTools}
+          />
+        </section>
+      )}
+
+      <details
+        id="knowledge-advanced-tools"
+        className={styles.advancedDiagnostics}
+        open={advancedToolsOpen}
+        onToggle={(event) => setAdvancedToolsOpen(event.currentTarget.open)}
+      >
+        <summary>
+          Alat lanjutan · indeks, build GraphRAG, retrieval, referensi, impor
+          lokal
+        </summary>
+        <div className={styles.advancedFacts}>
+          <span>Snapshot: {snapshotStatusLabel}</span>
+          <span>GraphRAG: {graphReadinessLabel}</span>
+          <span>Indexer: {indexerStatusLabel}</span>
+          <span>Snapshot graph: {graphSnapshotLabel}</span>
           {activeProjectId ? (
             <div className={styles.memoryExport}>
               <Button asChild variant="ghost">
@@ -1230,842 +1997,292 @@ export function KnowledgeWorkspace() {
                   href={`/api/projects/${activeProjectId}/memory?format=markdown&audience=evaluator`}
                   aria-label="Unduh wiki verified memory evaluator, termasuk kasus dan kriteria holdout"
                 >
-                  <FileText aria-hidden="true" size={15} />
-                  Wiki evaluator
+                  <FileText aria-hidden="true" size={15} /> Wiki evaluator
                 </a>
               </Button>
               <span className="helper">
-                Ekspor Markdown read-only untuk evaluator; mencakup kasus dan
-                kriteria holdout. Tidak dipakai oleh retrieval runtime.
+                Ekspor Markdown untuk evaluator, bukan retrieval runtime.
               </span>
             </div>
           ) : null}
-        </div>
-      </div>
-      <section
-        className={`knowledge-status-grid ${styles.statusGrid}`}
-        aria-label="Status knowledge"
-      >
-        <Card>
-          <CardContent className="knowledge-stat">
-            <span className="helper">Sumber aktif</span>
-            <strong>
-              {data
-                ? data.readiness.documents.eligible
-                : knowledgeStatus === "Memuat…"
-                  ? "Memuat…"
-                  : "—"}
-            </strong>
-            <span className="helper">
-              {data
-                ? "Sumber eligible dari total dokumen proyek."
-                : (knowledgeStatus ?? "Status proyek belum tersedia.")}
-            </span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="knowledge-stat">
-            <span className="helper">Indeks leksikal</span>
-            <Badge
-              variant={
-                !data || !currentSources.length
-                  ? "muted"
-                  : lexicalReadySourceCount === currentSources.length
-                    ? "success"
-                    : "warning"
-              }
-            >
-              {data
-                ? currentSources.length
-                  ? lexicalReadySourceCount === currentSources.length
-                    ? "Tersedia"
-                    : "Parsial"
-                  : "Belum ada sumber"
-                : (knowledgeStatus ?? "Status belum tersedia")}
-            </Badge>
-            <span className="helper">
-              {data
-                ? lexicalReadySourceCount +
-                  "/" +
-                  currentSources.length +
-                  " sumber aktif memiliki chunk lokal."
-                : (knowledgeStatus ?? "Status indeks leksikal belum tersedia.")}
-            </span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="knowledge-stat">
-            <span className="helper">Indeks semantik</span>
-            <Badge
-              variant={
-                semanticIndexedProfileCount
-                  ? "muted"
-                  : allowedSources.length
-                    ? "warning"
-                    : "muted"
-              }
-            >
-              {data
-                ? semanticIndexedProfileCount
-                  ? semanticCoveredSourceCount +
-                    "/" +
-                    allowedSources.length +
-                    " sumber ber-vector"
-                  : "Belum ada vector"
-                : (knowledgeStatus ?? "Status belum tersedia")}
-            </Badge>
-            <span className="helper">
-              {data
-                ? allowedSources.length
-                  ? semanticIndexedProfileCount +
-                    " profil indeks tersimpan; kecocokan profil query belum diverifikasi."
-                  : "Tidak ada sumber yang mengizinkan indeks semantik."
-                : "Coverage indeks semantik belum tersedia."}
-            </span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="knowledge-stat">
-            <span className="helper">Indeks GraphRAG</span>
-            <Badge
-              variant={
-                data?.readiness.retrieval.graphAvailable ? "success" : "muted"
-              }
-            >
-              {graphReadinessLabel}
-            </Badge>
-            <span className="helper">
-              {data
-                ? data.readiness.documents.eligible === 0
-                  ? "Tambahkan sumber aktif untuk menyiapkan snapshot graf."
-                  : data.readiness.retrieval.graphAvailable
-                    ? "Snapshot tersedia untuk sumber yang tercakup."
-                    : "Belum ada snapshot aktif; pencarian leksikal tetap dapat dipakai."
-                : (knowledgeStatus ?? "Status GraphRAG belum tersedia.")}
-            </span>
-          </CardContent>
-        </Card>
-      </section>
-
-      <Card className={`knowledge-reference-pack ${styles.referenceCard}`}>
-        <CardHeader>
-          <div className="card-heading-row">
-            <div>
-              <CardTitle>Referensi umum</CardTitle>
-              <CardDescription>
-                Kumpulan ringkas dari sumber publik untuk prompt, evaluasi,
-                retrieval, keamanan, dan provenance. Preview hanya membaca
-                metadata dan kutipan; belum mengimpor atau mengindeks sumber.
-              </CardDescription>
-            </div>
-            <Badge variant="muted">
-              {referenceData?.metadata.status === "researched_only_not_ingested"
-                ? "Belum ditambahkan"
-                : referenceData
-                  ? "Siap ditinjau"
-                  : referenceLoading
-                    ? "Memuat referensi"
-                    : "Status belum tersedia"}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="reference-pack-content">
-          {activeProjectId && referenceError ? (
-            <div className="knowledge-reference-error" role="alert">
-              <p>{referenceError}</p>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!activeProjectId || referenceLoading}
-                onClick={() => {
-                  if (activeProjectId) void loadReferencePack(activeProjectId);
-                }}
-              >
-                {referenceLoading ? "Memuat…" : "Muat ulang referensi"}
-              </Button>
-            </div>
-          ) : null}
-          {referenceData ? (
-            <>
-              <div className="reference-pack-summary">
-                <div>
-                  <span className="panel-label">Kumpulan sumber</span>
-                  <strong>
-                    {referenceData.metadata.corpus_id ?? "Referensi umum"}
-                  </strong>
-                  <span className="helper">
-                    {referenceData.metadata.scope?.bounds?.source_count ??
-                      referenceData.sources.length}{" "}
-                    sumber ·{" "}
-                    {referenceData.metadata.scope?.bounds?.chunk_count ??
-                      referenceData.previews.length}{" "}
-                    ringkasan · versi riset{" "}
-                    {referenceData.metadata.schema_version ?? "tidak tersedia"}
-                  </span>
-                  {referenceData.metadata.scope?.purpose ? (
-                    <p className="helper">
-                      {referenceData.metadata.scope.purpose}
-                    </p>
-                  ) : null}
-                  {referenceData.metadata.source_snapshot_at_utc ? (
-                    <span className="helper">
-                      Ditinjau{" "}
-                      {new Date(
-                        referenceData.metadata.source_snapshot_at_utc,
-                      ).toLocaleString("id-ID", { timeZone: "UTC" })}{" "}
-                      UTC
-                    </span>
-                  ) : null}
-                </div>
-                <div className="reference-pack-actions">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={!activeProjectId || referenceLoading}
-                    onClick={() => {
-                      if (activeProjectId)
-                        void loadReferencePack(activeProjectId);
-                    }}
-                  >
-                    {referenceLoading ? "Memuat…" : "Muat ulang"}
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={
-                      !activeProjectId ||
-                      !data ||
-                      referenceImportBusy ||
-                      referenceLoading
-                    }
-                    onClick={() => void importReferencePack()}
-                  >
-                    {referenceImportBusy
-                      ? "Menambahkan…"
-                      : "Tambahkan referensi umum"}
-                  </Button>
-                </div>
-              </div>
-              <p className="helper" role="note">
-                Import memakai izin <strong>local-only</strong>. Tidak ada
-                request ke Campus. Build graph memerlukan langkah dan
-                persetujuan egress terpisah di bawah.
-              </p>
-              {activeProjectId && referenceImportMessage ? (
-                <p className="success-message" role="status">
-                  {referenceImportMessage}
-                </p>
-              ) : null}
-              <section aria-labelledby="reference-source-list-title">
-                <h3 id="reference-source-list-title">Sumber publik</h3>
-                <ul className="reference-source-list">
-                  {referenceData.sources.map((source, index) => {
-                    const href = publicHttpsUrl(source.url);
-                    return (
-                      <li
-                        className="reference-source-card"
-                        id={`reference-source-${index}`}
-                        key={source.id}
-                      >
-                        <div className="reference-source-heading">
-                          <div>
-                            <strong>{source.title}</strong>
-                            <span className="helper">
-                              {source.publisher} · {source.source_type}
-                            </span>
-                          </div>
-                          {href ? (
-                            <a
-                              className="reference-source-link"
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label={`Buka sumber publik ${source.title} di tab baru`}
-                            >
-                              Buka sumber{" "}
-                              <ExternalLink size={14} aria-hidden="true" />
-                            </a>
-                          ) : (
-                            <span className="helper">
-                              URL publik tidak tersedia
-                            </span>
-                          )}
-                        </div>
-                        <p>{source.use}</p>
-                        <span className="helper">
-                          Diakses {source.accessed_at_utc} ·{" "}
-                          {source.sections_used.join("; ")}
-                        </span>
-                        {source.license_caveat || source.temporal_caveat ? (
-                          <details>
-                            <summary>Catatan penggunaan sumber</summary>
-                            {source.license_caveat ? (
-                              <p className="helper">
-                                Lisensi: {source.license_caveat}
-                              </p>
-                            ) : null}
-                            {source.temporal_caveat ? (
-                              <p className="helper">
-                                Waktu: {source.temporal_caveat}
-                              </p>
-                            ) : null}
-                          </details>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-              <section aria-labelledby="reference-preview-list-title">
-                <h3 id="reference-preview-list-title">Preview bukti</h3>
-                <ul className="reference-preview-list">
-                  {referenceData.previews.map((preview) => {
-                    const sourceIndex = referenceData.sources.findIndex(
-                      (source) => source.id === preview.source_id,
-                    );
-                    const source = referenceData.sources[sourceIndex];
-                    const href = source ? publicHttpsUrl(source.url) : null;
-                    return (
-                      <li className="reference-preview-card" key={preview.id}>
-                        <div className="reference-source-heading">
-                          <div>
-                            <strong>{preview.topic}</strong>
-                            <span className="helper">
-                              {source?.title ?? preview.source_id} ·{" "}
-                              {preview.source_section}
-                            </span>
-                          </div>
-                          {href ? (
-                            <a
-                              className="reference-source-link"
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Sumber{" "}
-                              <ExternalLink size={14} aria-hidden="true" />
-                            </a>
-                          ) : null}
-                        </div>
-                        <p>{preview.summary}</p>
-                        <blockquote>{preview.evidence_excerpt}</blockquote>
-                        <span className="helper">
-                          {preview.claim_type}
-                          {sourceIndex >= 0 ? (
-                            <>
-                              {" "}
-                              ·{" "}
-                              <a href={`#reference-source-${sourceIndex}`}>
-                                Lihat provenance sumber
-                              </a>
-                            </>
-                          ) : null}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            </>
-          ) : !referenceError ? (
-            <p className="helper" role="status">
-              {referenceLoading
-                ? "Memuat metadata, sumber publik, dan preview…"
-                : !activeProjectId
-                  ? "Pilih proyek untuk meninjau referensi umum."
-                  : "Referensi umum belum tersedia."}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card className={styles.sourceCreationCard} id="knowledge-add-source">
-        <CardHeader>
-          <div className="card-heading-row">
-            <div>
-              <CardTitle>Tambah sumber</CardTitle>
-              <CardDescription>
-                Teks UTF-8 dibatasi {MAX_SOURCE_BYTES.toLocaleString("id-ID")}{" "}
-                byte. PDF dibatasi {MAX_PDF_FILE_BYTES.toLocaleString("id-ID")}{" "}
-                byte dan 50 halaman; setiap halaman perlu memiliki lapisan teks.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div
-            className="form-row source-mode-switch"
-            role="group"
-            aria-label="Jenis input sumber"
-          >
-            <Button
-              type="button"
-              variant={sourceMode === "paste" ? "secondary" : "ghost"}
-              aria-pressed={sourceMode === "paste"}
-              onClick={() => setSourceMode("paste")}
-            >
-              Paste teks
-            </Button>
-            <Button
-              type="button"
-              variant={sourceMode === "upload" ? "secondary" : "ghost"}
-              aria-pressed={sourceMode === "upload"}
-              onClick={() => setSourceMode("upload")}
-            >
-              Upload file
-            </Button>
-          </div>
-          <form
-            className="knowledge-ingest"
-            onSubmit={(event) => void saveSource(event)}
-          >
-            {sourceMode === "paste" ? (
-              <>
-                <div className="field">
-                  <label htmlFor="source-name">Nama sumber</label>
-                  <input
-                    id="source-name"
-                    className="input"
-                    value={pasteName}
-                    onChange={(event) => setPasteName(event.target.value)}
-                    maxLength={240}
-                    required
-                  />
-                  <span className="helper">
-                    Gunakan akhiran .txt, .md, atau .markdown.
-                  </span>
-                </div>
-                <div className="field">
-                  <label htmlFor="source-content">Teks sumber</label>
-                  <textarea
-                    id="source-content"
-                    className="input source-content-input"
-                    value={pasteContent}
-                    onChange={(event) => setPasteContent(event.target.value)}
-                    maxLength={MAX_SOURCE_BYTES}
-                    required
-                    placeholder="Paste dokumen yang memang ingin Anda jadikan sumber."
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="field">
-                <label htmlFor="source-file">
-                  File teks, Markdown, atau PDF
-                </label>
-                <input
-                  id="source-file"
-                  className="input file-input"
-                  type="file"
-                  accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
-                  onChange={(event) =>
-                    setSelectedFile(event.target.files?.[0] ?? null)
-                  }
-                />
-                <span className="helper">
-                  File PDF harus berupa PDF berlapis teks. OCR tidak dilakukan;
-                  PDF pindai atau halaman tanpa teks akan ditolak. Teks ekstrak
-                  tetap dibatasi {MAX_SOURCE_BYTES.toLocaleString("id-ID")}{" "}
-                  byte.
-                </span>
-              </div>
-            )}
-            <div className="field">
-              <label htmlFor="source-vault-path">
-                Path relatif catatan Markdown{" "}
-                <span className="helper">(opsional)</span>
-              </label>
-              <input
-                id="source-vault-path"
-                className="input"
-                value={vaultPath}
-                onChange={(event) => setVaultPath(event.target.value)}
-                maxLength={500}
-                placeholder="notes/overview.md"
-              />
-              <span className="helper">
-                Path ini hanya metadata. PromptLab tidak membuka file di
-                komputer Anda.
-              </span>
-            </div>
-            {sources.some((source) => !source.deleted) ? (
-              <div className="field">
-                <label htmlFor="replace-source">
-                  Simpan sebagai versi baru{" "}
-                  <span className="helper">(opsional)</span>
-                </label>
-                <select
-                  id="replace-source"
-                  className="select"
-                  value={replaceSourceId}
-                  onChange={(event) => setReplaceSourceId(event.target.value)}
-                >
-                  <option value="">Buat sumber baru</option>
-                  {sources
-                    .filter((source) => !source.deleted)
-                    .map((source) => (
-                      <option key={source.id} value={source.id}>
-                        {source.displayName} · v{source.version}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            ) : null}
-            <label className="permission-choice">
-              <input
-                type="checkbox"
-                checked={sourcePermission === "campus_indexer_allowed"}
-                onChange={(event) =>
-                  setSourcePermission(
-                    event.target.checked
-                      ? "campus_indexer_allowed"
-                      : "local_only",
-                  )
-                }
-              />
-              <span>
-                <strong>
-                  Izinkan Campus Gateway memakai sumber untuk indexing
-                </strong>
-                <span className="helper">
-                  Izin ini hanya untuk Campus Gateway. Build tetap meminta
-                  persetujuan egress lagi. Izin ini tidak mengizinkan pengiriman
-                  ke provider lain.
-                </span>
-              </span>
-            </label>
-            {sourceError ? (
-              <p className="error-message" role="alert">
-                {sourceError}
-              </p>
-            ) : null}
-            {sourceMessage ? (
-              <p className="success-message" role="status">
-                {sourceMessage}
-              </p>
-            ) : null}
-            <div className="form-row">
-              <Button
-                type="submit"
-                disabled={sourceBusy || !activeProjectId || !data}
-              >
-                <Upload aria-hidden="true" size={15} />
-                {sourceBusy
-                  ? "Menyimpan…"
-                  : replaceSourceId
-                    ? "Simpan versi baru"
-                    : "Simpan sumber"}
-              </Button>
-              {replaceSourceId ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setReplaceSourceId("")}
-                >
-                  Batal ganti versi
-                </Button>
-              ) : null}
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className={styles.sourcesCard}>
-        <CardHeader>
-          <div className="card-heading-row">
-            <div>
-              <CardTitle>Dokumen dan izin sumber</CardTitle>
-              <CardDescription>
-                Perubahan teks membuat versi baru. Hapus atau cabut izin
-                menginvalidasi evidence terkait.
-              </CardDescription>
-            </div>
-            <div className={styles.sourceTools}>
-              <label className="sr-only" htmlFor="knowledge-source-search">
-                Cari sumber
-              </label>
-              <div className={styles.searchField}>
-                <Search aria-hidden="true" size={15} />
-                <input
-                  id="knowledge-source-search"
-                  type="search"
-                  value={sourceSearch}
-                  onChange={(event) => setSourceSearch(event.target.value)}
-                  placeholder="Cari sumber…"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Muat ulang sumber"
-                onClick={() => void refresh(true)}
-                disabled={loading}
-              >
-                <RefreshCw aria-hidden="true" size={15} />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {permissionMessage ? (
-            <p className="success-message" role="status">
-              {permissionMessage}
-            </p>
-          ) : null}
-          {permissionError ? (
-            <p className="error-message" role="alert">
-              {permissionError}
-            </p>
-          ) : null}
-          {visibleSources.length ? (
-            <ul className="knowledge-source-list">
-              {visibleSources.map((source) => (
-                <li
-                  className="knowledge-source-card"
-                  id={`knowledge-source-${source.id}`}
-                  key={source.id}
-                >
-                  <div className="knowledge-source-main">
-                    <div className="knowledge-source-icon">
-                      <FileText aria-hidden="true" size={17} />
-                    </div>
-                    <div className="knowledge-source-title">
-                      <strong>{source.displayName}</strong>
-                      <span className="helper">
-                        v{source.version} · {source.wordCount ?? 0} kata ·
-                        terakhir diperbarui{" "}
-                        {new Date(source.updatedAt).toLocaleDateString("id-ID")}
-                      </span>
-                    </div>
-                    <Badge variant="muted">
-                      {source.contentType ?? source.sourceKind}
-                    </Badge>
-                    <Badge variant={source.eligible ? "success" : "warning"}>
-                      {source.eligible ? "Siap dipakai" : "Belum siap"}
-                    </Badge>
-                  </div>
-                  <p className="helper">
-                    Indeks leksikal:{" "}
-                    {source.eligible && source.chunkCount > 0
-                      ? source.chunkCount + " chunk tersimpan"
-                      : "belum siap"}{" "}
-                    · Semantik:{" "}
-                    {semanticIndexStatusLabel(source.semanticReadiness)}
-                  </p>
-                  {source.semanticReadiness ? (
-                    <details>
-                      <summary>Detail indeks semantik</summary>
-                      <div>
-                        {source.semanticReadiness.profiles.length ? (
-                          source.semanticReadiness.profiles.map((profile) => (
-                            <div key={profile.profileChecksum}>
-                              <p className="helper">
-                                {profile.requestedModel} →{" "}
-                                {profile.observedModel} ·{" "}
-                                {profile.embeddedChunkCount}/
-                                {profile.chunkCount} chunk ·{" "}
-                                {profile.status === "ready"
-                                  ? "lengkap"
-                                  : "parsial"}
-                              </p>
-                              <p className="helper">
-                                Profil {profile.profileChecksum.slice(0, 12)}… ·{" "}
-                                {profile.provider} · {profile.dimensions}{" "}
-                                dimensi
-                                {profile.modelDigest
-                                  ? " · digest model " +
-                                    profile.modelDigest.slice(0, 12) +
-                                    "…"
-                                  : ""}
-                                <br />
-                                Versi indeks: {profile.chunkingVersion} ·{" "}
-                                {profile.preprocessingVersion} ·{" "}
-                                {profile.queryTemplateVersion} ·{" "}
-                                {profile.documentTemplateVersion}
-                              </p>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="helper">
-                            {source.semanticReadiness.status === "stale"
-                              ? source.semanticReadiness.staleEmbeddingCount +
-                                " vector hanya terkait versi lama atau checksum berbeda."
-                              : "Belum ada vector yang cocok dengan versi aktif."}
-                          </p>
-                        )}
-                        <p className="helper">
-                          Coverage ini menggambarkan indeks tersimpan; kecocokan
-                          dengan profil query saat retrieval belum diverifikasi.
-                        </p>
-                      </div>
-                    </details>
-                  ) : null}
-                  <label className="permission-choice source-permission-toggle">
-                    <input
-                      type="checkbox"
-                      checked={source.permission === "campus_indexer_allowed"}
-                      onChange={(event) =>
-                        void changePermission(
-                          source,
-                          event.target.checked
-                            ? "campus_indexer_allowed"
-                            : "local_only",
-                        )
-                      }
-                    />
-                    <span>
-                      <strong>Gateway campus diizinkan</strong>
-                      <span className="helper">
-                        {source.permission === "campus_indexer_allowed"
-                          ? "Izin hanya untuk Campus Gateway; setiap build tetap memerlukan persetujuan egress."
-                          : "Sumber local-only dapat dipakai untuk preview lokal, tetapi tidak dikirim ke Campus Gateway."}
-                      </span>
-                    </span>
-                  </label>
-                  <div className="knowledge-source-actions">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={sourcePreviewBusy === source.id}
-                      onClick={() => void previewSource(source)}
-                    >
-                      <FileText aria-hidden="true" size={14} />
-                      {sourcePreviewBusy === source.id
-                        ? "Memuat…"
-                        : "Pratinjau"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setReplaceSourceId(source.id);
-                        setSourceMode("paste");
-                        setPasteName(source.displayName);
-                      }}
-                    >
-                      Buat versi baru
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void removeSource(source)}
-                    >
-                      <Trash2 aria-hidden="true" size={14} /> Hapus
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="empty-state knowledge-empty-state">
-              <div>
-                <FileText aria-hidden="true" size={22} />
-                <p>
-                  {listedSources.length && normalizedSourceSearch
-                    ? "Tidak ada sumber yang cocok dengan pencarian."
-                    : !activeProjectId
-                      ? "Pilih proyek untuk melihat sumber."
-                      : loading
-                        ? "Memuat sumber…"
-                        : data
-                          ? "Belum ada sumber pada proyek ini."
-                          : "Sumber belum dapat dimuat."}
-                </p>
-                <p className="helper">
-                  {listedSources.length && normalizedSourceSearch
-                    ? "Coba nama atau jenis sumber yang berbeda."
-                    : "Paste teks atau pilih file Markdown untuk membuat versi pertama. File repository tidak diimpor otomatis."}
-                </p>
-              </div>
-            </div>
-          )}
-          {sourcePreviewError ? (
-            <p className="error-message" role="alert">
-              {sourcePreviewError}
-            </p>
-          ) : null}
-          {sourcePreview?.projectId === activeProjectId ? (
-            <section
-              className={styles.sourcePreview}
-              aria-label="Pratinjau sumber terpilih"
-            >
-              <div className={styles.sourcePreviewHeading}>
-                <div>
-                  <h3>{sourcePreview.source.displayName}</h3>
-                  <p className="helper">
-                    v{sourcePreview.source.version} ·{" "}
-                    {sourcePreview.source.chunks.length} chunk · SHA-256{" "}
-                    {sourcePreview.source.checksum.slice(0, 12)}…
-                  </p>
-                  {sourcePreview.source.sourceMetadata.origin ===
-                    "local_workspace" &&
-                  typeof sourcePreview.source.sourceMetadata.relativePath ===
-                    "string" ? (
-                    <p className="helper">
-                      Asal lokal:{" "}
-                      {sourcePreview.source.sourceMetadata.relativePath}
-                    </p>
-                  ) : null}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSourcePreview(null)}
-                >
-                  Tutup pratinjau
-                </Button>
-              </div>
-              {sourcePreview.source.chunks.slice(0, 5).map((chunk) => (
-                <article className={styles.sourcePreviewChunk} key={chunk.id}>
-                  <strong>
-                    {chunk.heading || "Bagian " + (chunk.ordinal + 1)}
-                    {chunk.pageNumber ? " · halaman " + chunk.pageNumber : ""}
-                  </strong>
-                  <p>{chunk.content}</p>
-                </article>
-              ))}
-              {sourcePreview.source.chunks.length > 5 ? (
-                <p className="helper">
-                  Menampilkan 5 dari {sourcePreview.source.chunks.length} chunk.
-                </p>
-              ) : null}
-            </section>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <LocalSourceBrowser
-        key={activeProjectId ?? "no-project"}
-        onImported={() => refresh(false)}
-      />
-
-      <details className={styles.advancedDiagnostics}>
-        <summary>
-          Diagnostik lanjutan · GraphRAG, chunk, snapshot, dan retrieval
-        </summary>
-        <div className={styles.advancedFacts}>
-          <span>Snapshot: {snapshotStatusLabel}</span>
-          <span>
-            Chunk eligible:{" "}
-            {data?.readiness.documents.chunkCount ?? "belum tersedia"}
-          </span>
-          <span>Indexer: {indexerStatusLabel}</span>
-          <span>Snapshot graph: {graphSnapshotLabel}</span>
         </div>
         <div className={styles.advancedGrid}>
+          <details className={styles.secondaryDisclosure}>
+            <summary>Referensi umum · sumber publik dan preview</summary>
+            <Card
+              className={`knowledge-reference-pack ${styles.referenceCard}`}
+            >
+              <CardHeader>
+                <div className="card-heading-row">
+                  <div>
+                    <CardTitle>Referensi umum</CardTitle>
+                    <CardDescription>
+                      Kumpulan ringkas dari sumber publik untuk prompt,
+                      evaluasi, retrieval, keamanan, dan provenance. Preview
+                      hanya membaca metadata dan kutipan; belum mengimpor atau
+                      mengindeks sumber.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="muted">
+                    {referenceData?.metadata.status ===
+                    "researched_only_not_ingested"
+                      ? "Belum ditambahkan"
+                      : referenceData
+                        ? "Siap ditinjau"
+                        : referenceLoading
+                          ? "Memuat referensi"
+                          : "Status belum tersedia"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="reference-pack-content">
+                {activeProjectId && referenceError ? (
+                  <div className="knowledge-reference-error" role="alert">
+                    <p>{referenceError}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={!activeProjectId || referenceLoading}
+                      onClick={() => {
+                        if (activeProjectId)
+                          void loadReferencePack(activeProjectId);
+                      }}
+                    >
+                      {referenceLoading ? "Memuat…" : "Muat ulang referensi"}
+                    </Button>
+                  </div>
+                ) : null}
+                {referenceData ? (
+                  <>
+                    <div className="reference-pack-summary">
+                      <div>
+                        <span className="panel-label">Kumpulan sumber</span>
+                        <strong>
+                          {referenceData.metadata.corpus_id ?? "Referensi umum"}
+                        </strong>
+                        <span className="helper">
+                          {referenceData.metadata.scope?.bounds?.source_count ??
+                            referenceData.sources.length}{" "}
+                          sumber ·{" "}
+                          {referenceData.metadata.scope?.bounds?.chunk_count ??
+                            referenceData.previews.length}{" "}
+                          ringkasan · versi riset{" "}
+                          {referenceData.metadata.schema_version ??
+                            "tidak tersedia"}
+                        </span>
+                        {referenceData.metadata.scope?.purpose ? (
+                          <p className="helper">
+                            {referenceData.metadata.scope.purpose}
+                          </p>
+                        ) : null}
+                        {referenceData.metadata.source_snapshot_at_utc ? (
+                          <span className="helper">
+                            Ditinjau{" "}
+                            {new Date(
+                              referenceData.metadata.source_snapshot_at_utc,
+                            ).toLocaleString("id-ID", { timeZone: "UTC" })}{" "}
+                            UTC
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="reference-pack-actions">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={!activeProjectId || referenceLoading}
+                          onClick={() => {
+                            if (activeProjectId)
+                              void loadReferencePack(activeProjectId);
+                          }}
+                        >
+                          {referenceLoading ? "Memuat…" : "Muat ulang"}
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={
+                            !activeProjectId ||
+                            !data ||
+                            referenceImportBusy ||
+                            referenceLoading
+                          }
+                          onClick={() => void importReferencePack()}
+                        >
+                          {referenceImportBusy
+                            ? "Menambahkan…"
+                            : "Tambahkan referensi umum"}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="helper" role="note">
+                      Sumber yang diimpor masuk ke indexing otomatis. Provider
+                      yang dikonfigurasi memprosesnya saat worker berjalan.
+                    </p>
+                    {activeProjectId && referenceImportMessage ? (
+                      <p className="success-message" role="status">
+                        {referenceImportMessage}
+                      </p>
+                    ) : null}
+                    <section aria-labelledby="reference-source-list-title">
+                      <h3 id="reference-source-list-title">Sumber publik</h3>
+                      <ul className="reference-source-list">
+                        {referenceData.sources.map((source, index) => {
+                          const href = publicHttpsUrl(source.url);
+                          return (
+                            <li
+                              className="reference-source-card"
+                              id={`reference-source-${index}`}
+                              key={source.id}
+                            >
+                              <div className="reference-source-heading">
+                                <div>
+                                  <strong>{source.title}</strong>
+                                  <span className="helper">
+                                    {source.publisher} · {source.source_type}
+                                  </span>
+                                </div>
+                                {href ? (
+                                  <a
+                                    className="reference-source-link"
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`Buka sumber publik ${source.title} di tab baru`}
+                                  >
+                                    Buka sumber{" "}
+                                    <ExternalLink
+                                      size={14}
+                                      aria-hidden="true"
+                                    />
+                                  </a>
+                                ) : (
+                                  <span className="helper">
+                                    URL publik tidak tersedia
+                                  </span>
+                                )}
+                              </div>
+                              <p>{source.use}</p>
+                              <span className="helper">
+                                Diakses {source.accessed_at_utc} ·{" "}
+                                {source.sections_used.join("; ")}
+                              </span>
+                              {source.license_caveat ||
+                              source.temporal_caveat ? (
+                                <details>
+                                  <summary>Catatan penggunaan sumber</summary>
+                                  {source.license_caveat ? (
+                                    <p className="helper">
+                                      Lisensi: {source.license_caveat}
+                                    </p>
+                                  ) : null}
+                                  {source.temporal_caveat ? (
+                                    <p className="helper">
+                                      Waktu: {source.temporal_caveat}
+                                    </p>
+                                  ) : null}
+                                </details>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                    <section aria-labelledby="reference-preview-list-title">
+                      <h3 id="reference-preview-list-title">Preview bukti</h3>
+                      <ul className="reference-preview-list">
+                        {referenceData.previews.map((preview) => {
+                          const sourceIndex = referenceData.sources.findIndex(
+                            (source) => source.id === preview.source_id,
+                          );
+                          const source = referenceData.sources[sourceIndex];
+                          const href = source
+                            ? publicHttpsUrl(source.url)
+                            : null;
+                          return (
+                            <li
+                              className="reference-preview-card"
+                              key={preview.id}
+                            >
+                              <div className="reference-source-heading">
+                                <div>
+                                  <strong>{preview.topic}</strong>
+                                  <span className="helper">
+                                    {source?.title ?? preview.source_id} ·{" "}
+                                    {preview.source_section}
+                                  </span>
+                                </div>
+                                {href ? (
+                                  <a
+                                    className="reference-source-link"
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Sumber{" "}
+                                    <ExternalLink
+                                      size={14}
+                                      aria-hidden="true"
+                                    />
+                                  </a>
+                                ) : null}
+                              </div>
+                              <p>{preview.summary}</p>
+                              <blockquote>
+                                {preview.evidence_excerpt}
+                              </blockquote>
+                              <span className="helper">
+                                {preview.claim_type}
+                                {sourceIndex >= 0 ? (
+                                  <>
+                                    {" "}
+                                    ·{" "}
+                                    <a
+                                      href={`#reference-source-${sourceIndex}`}
+                                    >
+                                      Lihat provenance sumber
+                                    </a>
+                                  </>
+                                ) : null}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  </>
+                ) : !referenceError ? (
+                  <p className="helper" role="status">
+                    {referenceLoading
+                      ? "Memuat metadata, sumber publik, dan preview…"
+                      : !activeProjectId
+                        ? "Pilih proyek untuk meninjau referensi umum."
+                        : "Referensi umum belum tersedia."}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          </details>
+          <details
+            className={styles.secondaryDisclosure}
+            onToggle={(event) => setLocalImportOpen(event.currentTarget.open)}
+          >
+            <summary>Impor file dari folder kerja lokal</summary>
+            {advancedToolsOpen && localImportOpen ? (
+              <LocalSourceBrowser
+                key={activeProjectId ?? "no-project"}
+                onImported={() => refresh(false)}
+              />
+            ) : null}
+          </details>
+
           <Card className={styles.buildCard} id="knowledge-graph-build">
             <CardHeader>
               <div className="card-heading-row">
                 <div>
                   <CardTitle>Graph build</CardTitle>
                   <CardDescription>
-                    Preview tidak memanggil model. Enqueue mengirim sumber
-                    terpilih ke Campus Gateway setelah Anda meninjau budget dan
-                    menyetujui egress.
+                    Preview tidak memanggil model. Setelah Anda memilih sumber
+                    dan meninjau budget, build dapat langsung diantrekan saat
+                    provider indexer siap.
                   </CardDescription>
                 </div>
                 <Badge
@@ -2092,38 +2309,26 @@ export function KnowledgeWorkspace() {
               <fieldset className="source-selection build-source-selection">
                 <legend>Pilih sumber untuk build</legend>
                 {currentSources.length ? (
-                  currentSources.slice(0, 20).map((source) => {
-                    const allowed =
-                      source.permission === "campus_indexer_allowed";
-                    return (
-                      <label
-                        className={`source-choice${allowed ? "" : " source-choice-disabled"}`}
-                        key={source.id}
-                      >
-                        <input
-                          type="checkbox"
-                          disabled={!allowed}
-                          checked={
-                            allowed && selectedBuildSources.includes(source.id)
-                          }
-                          onChange={(event) =>
-                            toggleBuildSource(source.id, event.target.checked)
-                          }
-                        />
-                        <span>
-                          <span className="source-choice-name">
-                            {source.displayName}
-                          </span>
-                          <span className="helper">
-                            v{source.version} · {source.chunkCount} chunk ·{" "}
-                            {allowed
-                              ? "izin Campus Gateway tersimpan"
-                              : "local-only; tidak dapat dipilih untuk Campus build"}
-                          </span>
+                  currentSources.map((source) => (
+                    <label className="source-choice" key={source.id}>
+                      <input
+                        type="checkbox"
+                        checked={selectedBuildSources.includes(source.id)}
+                        onChange={(event) =>
+                          toggleBuildSource(source.id, event.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="source-choice-name">
+                          {source.displayName}
                         </span>
-                      </label>
-                    );
-                  })
+                        <span className="helper">
+                          v{source.version} · {source.chunkCount} chunk · siap
+                          dipilih untuk build
+                        </span>
+                      </span>
+                    </label>
+                  ))
                 ) : (
                   <p className="helper">
                     {!activeProjectId
@@ -2157,8 +2362,7 @@ export function KnowledgeWorkspace() {
               </div>
               {currentSources.length && !selectedBuildSources.length ? (
                 <p className="helper" role="status">
-                  Pilih sumber yang mengizinkan Campus Gateway. Pilihan kosong
-                  tidak memulai build.
+                  Pilih minimal satu sumber. Pilihan kosong tidak memulai build.
                 </p>
               ) : null}
               {buildPreview?.projectId === activeProjectId ? (
@@ -2197,7 +2401,7 @@ export function KnowledgeWorkspace() {
                   </ul>
                   <div className="field build-budget-field">
                     <label htmlFor="graph-call-budget">
-                      Batas panggilan yang disetujui
+                      Batas panggilan model
                     </label>
                     <input
                       id="graph-call-budget"
@@ -2222,29 +2426,6 @@ export function KnowledgeWorkspace() {
                       {buildPreview.providerReason}
                     </p>
                   ) : null}
-                  <label className="permission-choice build-egress-confirmation">
-                    <input
-                      type="checkbox"
-                      checked={allowCampusEgress}
-                      disabled={
-                        !buildPreview.providerReady || !buildPreview.ready
-                      }
-                      onChange={(event) =>
-                        setAllowCampusEgress(event.target.checked)
-                      }
-                    />
-                    <span>
-                      <strong>
-                        Kirim sumber terpilih ke{" "}
-                        {buildPreview.requestedModel ?? "campus gateway"} untuk
-                        extraction
-                      </strong>
-                      <span className="helper">
-                        Persetujuan ini hanya untuk build yang akan diantrekan
-                        sekarang. Tidak ada request saat preview.
-                      </span>
-                    </span>
-                  </label>
                   <p className="helper">
                     Percobaan ulang dari preview dan budget yang sama memakai
                     kunci idempoten yang sama agar tidak membuat build duplikat.
@@ -2254,12 +2435,12 @@ export function KnowledgeWorkspace() {
                     onClick={() => void enqueueBuild()}
                     disabled={
                       buildBusy ||
-                      !egressReady ||
+                      !buildReady ||
                       maxModelCalls < buildPreview.minModelCalls ||
                       maxModelCalls > buildPreview.maxModelCalls
                     }
                   >
-                    {buildBusy ? "Mengantrekan…" : "Setujui egress dan enqueue"}
+                    {buildBusy ? "Mengantrekan…" : "Enqueue build"}
                   </Button>
                 </section>
               ) : null}
@@ -2345,7 +2526,7 @@ export function KnowledgeWorkspace() {
                       : loading
                         ? "Memuat status build…"
                         : data
-                          ? "Belum ada build. Upload tidak memulai indexing."
+                          ? "Belum ada build. Indexing semantik berjalan otomatis setelah sumber disimpan; graph build diantrekan dari panel ini."
                           : "Status build belum dapat dimuat."}
                   </p>
                 )}
@@ -2609,7 +2790,7 @@ export function KnowledgeWorkspace() {
               {currentSources.length ? (
                 <fieldset className="source-selection retrieval-source-selection">
                   <legend>Sumber untuk query</legend>
-                  {currentSources.slice(0, 20).map((source) => (
+                  {currentSources.map((source) => (
                     <label className="source-choice" key={source.id}>
                       <input
                         type="checkbox"
@@ -2730,14 +2911,6 @@ export function KnowledgeWorkspace() {
           </Card>
         </div>
       </details>
-
-      <p className="helper knowledge-footnote">
-        {activeProject
-          ? `Readiness dan sumber yang ditampilkan berasal dari proyek ${activeProject.name}.`
-          : "Pilih proyek untuk mengelola knowledge."}{" "}
-        Campus indexing hanya berjalan setelah preview dan persetujuan
-        per-build.
-      </p>
     </div>
   );
 }

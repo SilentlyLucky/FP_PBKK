@@ -7,8 +7,6 @@ import {
 
 import { schema, type Database } from "./index.ts";
 
-export const MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES = 20;
-
 export type WorkspaceSourceManifestEntry = ContractWorkspaceSourceManifestEntry;
 export type WorkspaceSourceManifest = ContractWorkspaceSourceManifest;
 
@@ -51,10 +49,7 @@ export async function loadCurrentWorkspaceSourceScope(
   if (selectedIds.length === 0) {
     return { sources: [], invalidSelection: false, clipped: false };
   }
-  if (
-    selectedIds.length !== requestedSourceIds.length ||
-    selectedIds.length > MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES
-  ) {
+  if (selectedIds.length !== requestedSourceIds.length) {
     return { sources: [], invalidSelection: true, clipped: false };
   }
 
@@ -85,7 +80,6 @@ export async function loadCurrentWorkspaceSourceScope(
       ),
     )
     .orderBy(asc(schema.documents.id))
-    .limit(MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES + 1);
 
   const sources = rows.flatMap((row) =>
     !row.deletedAt &&
@@ -107,11 +101,9 @@ export async function loadCurrentWorkspaceSourceScope(
   );
 
   return {
-    sources: sources.slice(0, MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES),
-    invalidSelection:
-      selectedIds.length !== sources.length ||
-      rows.length > MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES,
-    clipped: rows.length > MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES,
+    sources,
+    invalidSelection: selectedIds.length !== sources.length,
+    clipped: false,
   };
 }
 
@@ -123,9 +115,7 @@ export async function captureWorkspaceSourceManifest(
   | { ok: true; manifest: WorkspaceSourceManifest }
   | {
       ok: false;
-      reason:
-        | "source_selection_not_current_in_project"
-        | "source_permission_not_granted";
+      reason: "source_selection_not_current_in_project";
     }
 > {
   const scope = await loadCurrentWorkspaceSourceScope(db, projectId, sourceIds);
@@ -134,13 +124,6 @@ export async function captureWorkspaceSourceManifest(
       ok: false,
       reason: "source_selection_not_current_in_project",
     };
-  }
-  if (
-    scope.sources.some(
-      (source) => source.permission !== "campus_indexer_allowed",
-    )
-  ) {
-    return { ok: false, reason: "source_permission_not_granted" };
   }
   return {
     ok: true,
@@ -164,8 +147,7 @@ export function workspaceSourceManifestMatchesCurrent(
   const expectedIds = expected.map((source) => source.documentId);
   if (
     new Set(expectedIds).size !== expectedIds.length ||
-    expected.length !== current.length ||
-    current.some((source) => source.permission !== "campus_indexer_allowed")
+    expected.length !== current.length
   ) {
     return false;
   }
@@ -174,7 +156,16 @@ export function workspaceSourceManifestMatchesCurrent(
       left.documentId.localeCompare(right.documentId),
     );
   return (
-    JSON.stringify(canonical(expected)) ===
+    JSON.stringify(
+      canonical(
+        expected.map((source) => ({
+          documentId: source.documentId,
+          documentVersionId: source.documentVersionId,
+          documentVersion: source.documentVersion,
+          checksum: source.checksum,
+        })),
+      ),
+    ) ===
     JSON.stringify(
       canonical(
         current.map((source) => ({
@@ -182,7 +173,6 @@ export function workspaceSourceManifestMatchesCurrent(
           documentVersionId: source.documentVersionId,
           documentVersion: source.documentVersion,
           checksum: source.checksum,
-          sourcePermission: source.permission,
         })),
       ),
     )
@@ -194,13 +184,7 @@ export async function isWorkspaceSourceManifestCurrent(
   projectId: string,
   manifest: WorkspaceSourceManifest,
 ): Promise<boolean> {
-  if (
-    manifest.format !== "promptlab-workspace-source-manifest-v1" ||
-    manifest.sources.length > MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES ||
-    manifest.sources.some(
-      (source) => source.sourcePermission !== "campus_indexer_allowed",
-    )
-  ) {
+  if (manifest.format !== "promptlab-workspace-source-manifest-v1") {
     return false;
   }
   const current = await loadCurrentWorkspaceSourceScope(

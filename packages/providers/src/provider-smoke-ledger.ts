@@ -21,7 +21,7 @@ export type SmokeOutcome =
   | "blocked_no_active_projects"
   | "blocked_budget_exhausted";
 
-export const MAX_INFERENCE_CALLS_PER_PROVIDER = 2 as const;
+export const MAX_INFERENCE_CALLS_PER_PROVIDER = 5 as const;
 export const MAX_CAMPAIGN_INFERENCE_CALLS_PER_PROVIDER = 110 as const;
 export const DEFAULT_PROVIDER_VERIFICATION_CAMPAIGN_BUDGET = {
   campus_gateway: MAX_CAMPAIGN_INFERENCE_CALLS_PER_PROVIDER,

@@ -70,10 +70,11 @@ export function workspaceTargetRetrievalSatisfiesTargetPreparation(input: {
 }
 
 /**
- * Retrieve from the exact frozen Workspace source selection. A lexical query
- * first keeps the existing all-prompt-terms behavior; when that misses, a
- * bounded retry uses meaningful task terms while preserving the original task
- * string and selected-source scope. No-match results remain empty.
+ * Retrieve from the exact frozen Workspace source selection. Auto uses hybrid
+ * lexical and semantic retrieval for the knowledge route. Explicit lexical
+ * keeps the all-prompt-terms behavior and, on a miss, retries with meaningful
+ * task terms while preserving the original task string and selected-source
+ * scope. No-match results remain empty.
  */
 export async function retrieveWorkspaceTargetSourceContext(input: {
   db: Database;
@@ -115,7 +116,7 @@ export async function retrieveWorkspaceTargetSourceContext(input: {
     }
   };
   const strategy =
-    input.requestedStrategy === "auto" ? "lexical" : input.requestedStrategy;
+    input.requestedStrategy === "auto" ? "hybrid" : input.requestedStrategy;
   const retrieve = input.retrieve ?? retrieveKnowledgeContext;
   const queryEmbedding =
     strategy === "hybrid"
@@ -144,7 +145,6 @@ export async function retrieveWorkspaceTargetSourceContext(input: {
       sourceIds: requestedSourceIds,
       sourceManifest: requestedManifest,
       snapshotId: strategy === "graph" ? (input.graphSnapshotId ?? null) : null,
-      requireCampusPermission: true,
       bounds: {
         maxEstimatedContextTokens: input.maxEstimatedContextTokens,
       },
@@ -182,8 +182,9 @@ export async function retrieveWorkspaceTargetSourceContext(input: {
 
 /**
  * Ensure selected-source context has been retrieved before the Workspace
- * target is called. Auto keeps the existing lexical default when the planner
- * did not select a retrieval tool; explicit Graph never falls back to lexical.
+ * target is called. Auto prefers GraphRAG when its frozen snapshot is
+ * available, then falls back to lexical retrieval. Explicit Graph remains
+ * strict and never falls back to lexical.
  */
 export async function ensureWorkspaceTargetSourceRetrieval(input: {
   requestedStrategy: WorkspaceRetrievalStrategy;
@@ -195,25 +196,40 @@ export async function ensureWorkspaceTargetSourceRetrieval(input: {
 }): Promise<void> {
   if (!input.sourceIds.length || input.retrievalCompleted) return;
 
-  if (input.requestedStrategy === "graph") {
-    const searchGraph = input.handlers.search_graph_entities;
+  const searchGraph = input.handlers.search_graph_entities;
+  if (
+    input.requestedStrategy === "graph" ||
+    (input.requestedStrategy === "auto" && searchGraph)
+  ) {
     if (!searchGraph) {
       throw new Error("WORKSPACE_CHAT_GRAPH_RETRIEVAL_UNAVAILABLE");
     }
-    const result = await searchGraph(
-      { query: input.originalTask, limit: 5 },
-      input.context,
-    );
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      Array.isArray(result) ||
-      !("available" in result) ||
-      result.available !== true
-    ) {
-      throw new Error("WORKSPACE_CHAT_GRAPH_RETRIEVAL_UNAVAILABLE");
+    try {
+      const result = await searchGraph(
+        { query: input.originalTask, limit: 5 },
+        input.context,
+      );
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        !Array.isArray(result) &&
+        "available" in result &&
+        result.available === true
+      ) {
+        return;
+      }
+      if (input.requestedStrategy === "graph") {
+        throw new Error("WORKSPACE_CHAT_GRAPH_RETRIEVAL_UNAVAILABLE");
+      }
+    } catch (error) {
+      if (
+        input.requestedStrategy !== "auto" ||
+        !(error instanceof Error) ||
+        error.message !== "WORKSPACE_CHAT_GRAPH_RETRIEVAL_UNAVAILABLE"
+      ) {
+        throw error;
+      }
     }
-    return;
   }
 
   const searchKnowledge = input.handlers.search_knowledge;

@@ -54,8 +54,6 @@ export class LocalWorkspaceApiError extends Error {
       | "WRITE_APPROVAL_REQUIRED"
       | "PATCH_APPROVAL_REQUIRED"
       | "WRITE_NOT_CONFIGURED"
-      | "SOURCE_PERMISSION_REQUIRED"
-      | "UNSUPPORTED_SOURCE_FILE"
       | "DATABASE_UNAVAILABLE"
       | "REQUEST_INVALID"
       | "REQUEST_TOO_LARGE"
@@ -135,9 +133,7 @@ export function parseLocalWorkspaceWriteProjects(
   return { projectIds };
 }
 
-export function parseLocalWorkspaceEvaluationCommands(
-  raw: string | undefined,
-):
+export function parseLocalWorkspaceEvaluationCommands(raw: string | undefined):
   | {
       readonly commands: readonly LocalWorkspaceEvaluationCommandConfiguration[];
     }
@@ -387,8 +383,7 @@ export class LocalWorkspaceGateway {
     const current = await this.withGrant(
       input.projectId,
       input.readGrantId,
-      (serviceGrantId) =>
-        this.service.read(serviceGrantId, input.relativePath),
+      (serviceGrantId) => this.service.read(serviceGrantId, input.relativePath),
     );
     if (
       current.contentHash !== input.snapshotHash ||
@@ -396,8 +391,10 @@ export class LocalWorkspaceGateway {
     ) {
       return false;
     }
-    await this.withWriteGrant(input.projectId, input.writeGrantId, async () =>
-      undefined,
+    await this.withWriteGrant(
+      input.projectId,
+      input.writeGrantId,
+      async () => undefined,
     );
     return true;
   }
@@ -803,8 +800,8 @@ export function assertLocalSameOrigin(request: Request): void {
     isUnspecifiedBindHost(target.hostname);
   const portMismatch = Boolean(
     (requestHost?.port && target.port && requestHost.port !== target.port) ||
-      (forwardedPort && forwardedPort !== effectivePort) ||
-      (target.port && target.port !== effectivePort),
+    (forwardedPort && forwardedPort !== effectivePort) ||
+    (target.port && target.port !== effectivePort),
   );
   const invalidRequestOrigin =
     (target.protocol !== "http:" && target.protocol !== "https:") ||
@@ -907,10 +904,6 @@ export function safeLocalWorkspaceError(error: unknown): Response {
         "Setujui perubahan atau pemulihan yang ditampilkan terlebih dahulu.",
       WRITE_NOT_CONFIGURED:
         "Izin tulis lokal belum diaktifkan untuk proyek ini.",
-      SOURCE_PERMISSION_REQUIRED:
-        "Pilih kebijakan berbagi sumber sebelum mengimpor.",
-      UNSUPPORTED_SOURCE_FILE:
-        "Impor hanya mendukung file teks UTF-8 .txt dan Markdown.",
       DATABASE_UNAVAILABLE: "Database knowledge lokal belum tersedia.",
       REQUEST_INVALID: "Permintaan workspace tidak valid.",
       REQUEST_TOO_LARGE: "Permintaan workspace melebihi batas.",

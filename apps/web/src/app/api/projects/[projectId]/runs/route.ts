@@ -57,8 +57,7 @@ function graphSnapshotCoversWorkspaceSources(
     const graphSource = graphSources.get(source.documentId);
     return (
       graphSource?.documentVersionId === source.documentVersionId &&
-      graphSource.checksum === source.checksum &&
-      graphSource.permission === source.sourcePermission
+      graphSource.checksum === source.checksum
     );
   });
 }
@@ -417,7 +416,6 @@ export async function POST(
             .select({
               documentId: schema.documents.id,
               activeVersionId: schema.documents.activeVersionId,
-              permission: schema.documents.trust,
               documentVersionId: schema.documentVersions.id,
               documentVersion: schema.documentVersions.version,
               checksum: schema.documentVersions.checksum,
@@ -453,7 +451,6 @@ export async function POST(
         currentSources.length !== controlledSourceIds.length ||
         currentSources.some(
           (source) =>
-            source.permission !== "campus_indexer_allowed" ||
             !source.eligible ||
             source.activeVersionId !== source.documentVersionId,
         ) ||
@@ -541,7 +538,6 @@ export async function POST(
         .select({
           id: schema.documents.id,
           activeVersionId: schema.documents.activeVersionId,
-          permission: schema.documents.trust,
         })
         .from(schema.documents)
         .where(
@@ -556,20 +552,6 @@ export async function POST(
         return Response.json(
           { error: "RETRIEVAL_SOURCE_NOT_FOUND" },
           { status: 404 },
-        );
-      }
-      if (
-        eligibleSources.some(
-          (source) => source.permission !== "campus_indexer_allowed",
-        )
-      ) {
-        return Response.json(
-          {
-            error: "RETRIEVAL_SOURCE_PERMISSION_REQUIRED",
-            message:
-              "Sumber local-only tidak dapat dikirim ke Campus Gateway. Cabut sumber itu dari pilihan run atau perbarui izinnya di Knowledge.",
-          },
-          { status: 409 },
         );
       }
       if (retrieval.strategy === "graph" && sourceIds.length > 0) {
@@ -1063,19 +1045,17 @@ export async function POST(
     });
     if ("sourceManifestError" in result) {
       const error =
-        result.sourceManifestError === "source_permission_not_granted"
-          ? "RETRIEVAL_SOURCE_PERMISSION_REQUIRED"
-          : result.sourceManifestError ===
-              "source_selection_not_current_in_project"
-            ? "RETRIEVAL_SOURCE_NOT_FOUND"
-            : result.sourceManifestError === "graph_snapshot_source_mismatch"
-              ? "GRAPH_SNAPSHOT_SOURCE_MISMATCH"
-              : "GRAPH_SNAPSHOT_NOT_CURRENT";
+        result.sourceManifestError ===
+        "source_selection_not_current_in_project"
+          ? "RETRIEVAL_SOURCE_NOT_FOUND"
+          : result.sourceManifestError === "graph_snapshot_source_mismatch"
+            ? "GRAPH_SNAPSHOT_SOURCE_MISMATCH"
+            : "GRAPH_SNAPSHOT_NOT_CURRENT";
       return Response.json(
         {
           error,
           message:
-            "Sumber berubah atau izinnya tidak lagi memenuhi syarat saat run dibuat. Perbarui pilihan sumber lalu coba lagi.",
+            "Sumber berubah sebelum run dibuat. Perbarui pilihan sumber lalu coba lagi.",
         },
         { status: 409 },
       );

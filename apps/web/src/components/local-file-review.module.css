@@ -836,6 +836,17 @@
   }
 }
 
+@container (max-width: 560px) {
+  .reviewGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fileRail {
+    min-height: 240px;
+    max-height: 360px;
+  }
+}
+
 @media (max-width: 680px) {
   .panelHeader,
   .permissionCard {

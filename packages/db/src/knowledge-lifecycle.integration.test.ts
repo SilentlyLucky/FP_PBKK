@@ -156,6 +156,11 @@ describe.skipIf(!integrationRequested)(
         fixture.sourceId,
         "local_only",
       );
+      const downgradedSnapshot = await getActiveGraphSnapshot(
+        connected.db,
+        projectId,
+      );
+      expect(downgradedSnapshot?.state).toBe("stale");
       expect(
         await graphSnapshotIsCurrent(
           connected.db,
@@ -264,6 +269,11 @@ describe.skipIf(!integrationRequested)(
         ...sourceInput,
         permission: "local_only",
       });
+      const downgradedSnapshot = await getActiveGraphSnapshot(
+        connected.db,
+        projectId,
+      );
+      expect(downgradedSnapshot?.state).toBe("stale");
       const [revokedEvidence] = await connected.db
         .select({ eligible: schema.graphEvidence.eligible })
         .from(schema.graphEvidence)
@@ -291,15 +301,11 @@ describe.skipIf(!integrationRequested)(
       expect(evidence?.eligible).toBe(false);
     }, 20_000);
 
-    it("imports the fixed public pack locally and keeps repeat imports idempotent", async () => {
+    it("imports the fixed public pack for indexing and keeps repeat imports idempotent", async () => {
       const connected = requireClient(client);
       const projectId = await createProject(connected);
 
-      const first = await importKnowledgeReferencePack(
-        connected.db,
-        projectId,
-        "local_only",
-      );
+      const first = await importKnowledgeReferencePack(connected.db, projectId);
       expect(first).toMatchObject({
         imported: 9,
         skipped: 0,
@@ -309,9 +315,11 @@ describe.skipIf(!integrationRequested)(
 
       const listed = await listKnowledgeSources(connected.db, projectId);
       expect(listed).toHaveLength(9);
-      expect(listed.every((source) => source.permission === "local_only")).toBe(
-        true,
-      );
+      expect(
+        listed.every(
+          (source) => source.permission === "campus_indexer_allowed",
+        ),
+      ).toBe(true);
       expect(
         listed.every((source) => source.sourceKind === "curated_reference"),
       ).toBe(true);
@@ -354,11 +362,7 @@ describe.skipIf(!integrationRequested)(
       });
       expect(retrieval.packedContext).toContain(prompting.sourceRef);
 
-      const second = await importKnowledgeReferencePack(
-        connected.db,
-        projectId,
-        "local_only",
-      );
+      const second = await importKnowledgeReferencePack(connected.db, projectId);
       expect(second).toMatchObject({
         imported: 0,
         skipped: 9,

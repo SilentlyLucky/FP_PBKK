@@ -111,7 +111,7 @@ export interface KnowledgeEmbeddingIndexSourceReadiness {
   chunkCount: number;
   staleEmbeddingCount: number;
   status: KnowledgeEmbeddingIndexReadinessStatus;
-  reason: "source_permission_not_granted" | "source_version_unavailable" | null;
+  reason: "source_version_unavailable" | null;
   retrievalProfileCompatibility: "not_verified";
   profiles: KnowledgeEmbeddingIndexProfileReadiness[];
 }
@@ -123,7 +123,6 @@ export type KnowledgeEmbeddingErrorCode =
   | "CHUNK_CHECKSUM_MISMATCH"
   | "SOURCE_NOT_FOUND"
   | "SOURCE_NOT_ELIGIBLE"
-  | "SOURCE_PERMISSION_REQUIRED"
   | "SEARCH_LIMIT_INVALID"
   | "EMBEDDING_IDEMPOTENCY_CONFLICT";
 
@@ -298,7 +297,6 @@ async function upsertKnowledgeChunkEmbeddingInTransaction(
       chunkChecksum: schema.chunks.contentHash,
       sourceActiveVersionId: schema.documents.activeVersionId,
       sourceDeletedAt: schema.documents.deletedAt,
-      sourcePermission: schema.documents.trust,
       versionEligible: schema.documentVersions.eligible,
       versionRetiredAt: schema.documentVersions.retiredAt,
     })
@@ -337,12 +335,6 @@ async function upsertKnowledgeChunkEmbeddingInTransaction(
       "CHUNK_CHECKSUM_MISMATCH",
       "The embedding checksum does not match the stored chunk.",
       { expected: source.chunkChecksum, actual: chunkChecksum },
-    );
-  }
-  if (source.sourcePermission !== "campus_indexer_allowed") {
-    throw new KnowledgeEmbeddingError(
-      "SOURCE_PERMISSION_REQUIRED",
-      "Embedding persistence requires the source's existing Campus permission.",
     );
   }
   if (
@@ -559,7 +551,6 @@ export async function searchKnowledgeEmbeddings(
           schema.documents.activeVersionId,
           schema.knowledgeChunkEmbeddings.documentVersionId,
         ),
-        eq(schema.documents.trust, "campus_indexer_allowed"),
         isNull(schema.documents.deletedAt),
         eq(schema.documentVersions.eligible, true),
         isNull(schema.documentVersions.retiredAt),
@@ -606,7 +597,6 @@ export async function listKnowledgeChunksForEmbedding(
         eq(schema.chunks.projectId, input.projectId),
         eq(schema.documents.id, input.sourceId),
         eq(schema.documentVersions.id, input.documentVersionId),
-        eq(schema.documents.trust, "campus_indexer_allowed"),
         isNull(schema.documents.deletedAt),
         eq(schema.documentVersions.eligible, true),
         isNull(schema.documentVersions.retiredAt),
@@ -627,7 +617,6 @@ export async function getKnowledgeEmbeddingIndexReadiness(
     .select({
       sourceId: schema.documents.id,
       activeVersionId: schema.documents.activeVersionId,
-      permission: schema.documents.trust,
       deletedAt: schema.documents.deletedAt,
       documentVersionId: schema.documentVersions.id,
       eligible: schema.documentVersions.eligible,
@@ -678,7 +667,6 @@ export async function getKnowledgeEmbeddingIndexReadiness(
           schema.knowledgeChunkEmbeddings.chunkChecksum,
           schema.chunks.contentHash,
         ),
-        eq(schema.documents.trust, "campus_indexer_allowed"),
         isNull(schema.documents.deletedAt),
         eq(schema.documentVersions.eligible, true),
         isNull(schema.documentVersions.retiredAt),
@@ -827,7 +815,6 @@ export async function getKnowledgeEmbeddingIndexReadiness(
     const staleEmbeddingCount = staleCountBySource.get(sourceId) ?? 0;
     const current = Boolean(
       source &&
-      source.permission === "campus_indexer_allowed" &&
       !source.deletedAt &&
       source.documentVersionId &&
       source.activeVersionId === source.documentVersionId &&
@@ -876,13 +863,7 @@ export async function getKnowledgeEmbeddingIndexReadiness(
       chunkCount: current ? chunkCount : 0,
       staleEmbeddingCount,
       status,
-      reason: current
-        ? null
-        : !source
-          ? "source_version_unavailable"
-          : source.permission !== "campus_indexer_allowed"
-            ? "source_permission_not_granted"
-            : "source_version_unavailable",
+      reason: current ? null : "source_version_unavailable",
       retrievalProfileCompatibility: "not_verified" as const,
       profiles,
     };
@@ -900,7 +881,6 @@ export async function getKnowledgeEmbeddingReadiness(
     .select({
       sourceId: schema.documents.id,
       activeVersionId: schema.documents.activeVersionId,
-      permission: schema.documents.trust,
       deletedAt: schema.documents.deletedAt,
       documentVersionId: schema.documentVersions.id,
       eligible: schema.documentVersions.eligible,
@@ -928,7 +908,6 @@ export async function getKnowledgeEmbeddingReadiness(
   const indexableVersionIds = sources
     .filter(
       (source) =>
-        source.permission === "campus_indexer_allowed" &&
         !source.deletedAt &&
         source.documentVersionId &&
         source.activeVersionId === source.documentVersionId &&
@@ -987,7 +966,6 @@ export async function getKnowledgeEmbeddingReadiness(
     const source = sourceById.get(sourceId);
     const current = Boolean(
       source &&
-      source.permission === "campus_indexer_allowed" &&
       !source.deletedAt &&
       source.documentVersionId &&
       source.activeVersionId === source.documentVersionId &&

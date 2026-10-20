@@ -39,21 +39,19 @@ flowchart TD
     P --> R[Pengguna memilih root lalu meminta Hubungkan dan izinkan baca]
     R --> RG[Izin baca project-scoped, 15 menit]
     RG --> L[Daftar folder dan preview teks yang diizinkan]
-    L --> I[Pilih file dan izin sumber]
-    I --> V{Format .txt, .md, atau .markdown?}
-    V -->|tidak| EU[Impor lokal ditolak: format tidak didukung]
+    L --> I[Pilih file]
+    I --> V{Isi file berupa teks UTF-8 valid?}
+    V -->|tidak| EU[Impor lokal ditolak: isi bukan teks yang didukung]
     V -->|ya| DB[Impor eksplisit melalui API]
     DB --> HASH[Snapshot byte dan SHA-256]
     HASH --> SRC[Buat sumber v1 atau ganti versi untuk path lokal yang sama]
     SRC --> CH[Ekstraksi teks, metadata, chunk, dan versi di Knowledge DB]
-    CH --> PERM{Izin sumber}
-    PERM -->|local-only| LO[Disimpan untuk penggunaan lokal/preview yang diizinkan; tidak dikirim ke retrieval remote]
-    PERM -->|Campus Gateway diizinkan| READY[Sumber dapat dipilih untuk alur remote yang diizinkan]
-
+    CH --> EMBED[Antrikan semantic indexing otomatis saat provider siap]
+    CH --> READY[Sumber eligible untuk dipilih]
     READY --> PRE[Graph build preview: hitung sumber/chunk/budget; belum memanggil model]
-    PRE --> CONSENT{Pengguna menyetujui budget dan egress ke Campus?}
-    CONSENT -->|tidak| STOP[Tidak ada build yang diantrekan]
-    CONSENT -->|ya| Q[Queue graph build]
+    PRE --> START{Pengguna memilih sumber dan memulai Build?}
+    START -->|tidak| STOP[Tidak ada graph build yang diantrekan]
+    START -->|ya| Q[Queue graph build tanpa persetujuan egress tambahan]
     Q --> WORKER[Worker mengekstrak dan memvalidasi graph melalui Campus Gateway]
     WORKER --> CUR{Versi dan manifest sumber masih sama?}
     CUR -->|ya, lengkap| ACTIVE[Snapshot graph aktif dan terikat ke versi sumber]
@@ -62,7 +60,9 @@ flowchart TD
 
 **Hal yang terjadi saat impor:** file asal tidak diedit oleh indexer. PromptLab membuat snapshot byte dan sumber versi di proyek. Mengimpor ulang path lokal yang sama memperbarui versi sumber itu. Tidak ada sinkronisasi otomatis ketika file host berubah.
 
-**Snapshot graph:** build hanya dapat memilih sumber yang izinnya mengizinkan Campus Gateway. Preview tidak memanggil model. Enqueue memerlukan persetujuan egress dan budget. Snapshot mencatat source ID serta versi/hash yang dipakai; perubahan versi setelah build membuat snapshot lama tidak cocok untuk GraphRAG terbaru.
+Pertahankan ekstensi dan format sumber asli. File kode tetap dikenali sebagai kode oleh Graphify; PDF disimpan bersama snapshot byte dan hanya lapisan teksnya yang diekstrak; file teks lain (termasuk CSV/JSON) saat ini dipotong dan diindeks sebagai teks biasa. Untuk tautan antarcatatan atau konteks naratif, tambahkan sumber Markdown terpisah yang merujuk file asli. Jangan mengubah file biner menjadi `.md` dengan sekadar mengganti nama; gunakan ekstraksi format/OCR terlebih dahulu.
+
+**Snapshot graph:** build menerima sumber eligible yang dipilih pengguna. Semantic indexing otomatis diantrikan saat sumber diimpor. Preview tidak memanggil model; pengguna memulai GraphRAG lewat tombol Build setelah provider terverifikasi dan readiness/budget terpenuhi, tanpa persetujuan egress tambahan. Snapshot mencatat source ID serta versi/hash yang dipakai; perubahan versi setelah build membuat snapshot lama tidak cocok untuk GraphRAG terbaru.
 
 ## Diagram 2 — dari pertanyaan Workspace sampai bukti dan jawaban
 
@@ -166,15 +166,15 @@ flowchart TD
 | File rahasia, internal, tersembunyi, binary, atau terlalu besar | Item dapat disembunyikan, dilewati, atau ditolak oleh operasi baca/search/patch. Hasil list/search dibatasi dan dapat diberi tanda truncation. | Pindahkan hanya file teks yang ingin dipakai; buka subfolder bila daftar dipotong. |
 | Web container direstart | Grant dan proposal sementara dapat hilang karena runtime akses lokal disimpan di memori proses. File host dan sumber Knowledge yang sudah tersimpan tetap terpisah dari grant tersebut. | Buka ulang panel, minta izin lagi, dan buat ulang proposal yang belum disetujui. |
 
-### B. Impor Knowledge dan izin sumber
+### B. Impor Knowledge dan indeks otomatis
 
 | Kondisi | Hasil yang diharapkan | Tindakan |
 | --- | --- | --- |
 | Database belum tersedia | File lokal masih dapat dipreview, tetapi impor sumber gagal. | Pulihkan koneksi/migrasi database lalu impor ulang. |
-| Impor file lokal dengan ekstensi selain `.txt`, `.md`, `.markdown` | Import API menolak file lokal sebagai format tidak didukung. | Ubah ke format teks yang didukung atau gunakan jalur upload yang mendukung tipe tersebut. |
+| Impor file lokal dengan ekstensi apa pun dan isi teks UTF-8 valid | File dapat diimpor; ekstensi `.md`/`.markdown` disimpan sebagai Markdown, ekstensi lain sebagai teks biasa. | Tetap pastikan isi file memang teks yang ingin dijadikan sumber. |
 | File berubah di host setelah pernah diimpor | Sumber Knowledge tetap berisi versi terakhir yang diimpor; tidak ada live sync. | Impor ulang file. Ini menghasilkan versi/checksum baru. |
 | Path relatif yang sama diimpor lagi | Sumber lokal yang sama diperbarui, bukan dibuat sebagai link live baru. | Setelah impor ulang, perbarui snapshot GraphRAG sebelum meminta GraphRAG atas versi baru. |
-| Izin sumber `local-only` | Source dapat tersimpan, tetapi tidak memenuhi syarat retrieval/build yang mengirim teks ke Campus Gateway. | Jangan pilih untuk run remote; ubah izin hanya jika memang mengizinkan egress tersebut. |
+| Sumber legacy berstatus `local_only` | Status tersebut tidak menghalangi semantic indexing atau GraphRAG build yang dipilih pengguna. Workspace chat tetap menjalankan pemeriksaan retrieval yang sudah ada. | Untuk sumber baru, impor otomatis mengantrikan indexing; periksa preview dan kesiapan provider sebelum memulai graph build. |
 | Tidak ada source dipilih atau source sudah dihapus/tidak aktif | Tidak ada bukti Knowledge untuk dipakai; API dapat menolak source yang tidak ditemukan. | Buka **Sumber**, aktifkan/impor source yang benar, lalu pilih lagi. |
 | Source dipilih dua kali atau pilihan melewati batas | Request ditolak sebagai selection tidak valid. | Pilih source unik sesuai batas UI/API. |
 | Provider run tidak menyediakan jalur Campus Gateway saat source dipakai | Run berbasis source ditolak; teks source tidak dikirim ke provider tanpa izin jalur tersebut. | Konfigurasikan dan pilih alur provider yang diizinkan, atau jalankan tanpa source. |
@@ -183,8 +183,8 @@ flowchart TD
 
 | Kondisi | Hasil yang diharapkan | Tindakan |
 | --- | --- | --- |
-| Tidak memilih source untuk build | Preview/enqueue berhenti; build butuh minimal satu source yang mengizinkan Campus. | Pilih source eligible. |
-| Preview sudah ada tetapi consent egress belum diberikan | Build tidak diantrekan dan tidak ada ekstraksi graph. | Tinjau source/budget, lalu beri consent hanya bila setuju mengirimnya ke Campus. |
+| Tidak memilih source untuk build | Preview/enqueue berhenti; build butuh minimal satu source eligible. | Pilih source eligible. |
+| Provider belum terverifikasi atau readiness belum terpenuhi | Semantic indexing atau graph build tidak dapat berjalan sampai koneksi/provider siap. | Verifikasi konfigurasi Campus Gateway dan ulangi ketika provider siap. |
 | Campus/provider/model tidak tersedia atau budget tidak valid | Enqueue/worker gagal; tidak ada snapshot baru yang diaktifkan. | Perbaiki konfigurasi atau budget, kemudian buat preview/build baru. |
 | Build dibatalkan, parsial, gagal, atau manifest berubah saat build | Build baru tidak menjadi snapshot aktif; snapshot aktif sebelumnya dipertahankan. | Tinjau error dan status sumber, lalu jalankan build baru setelah sumber stabil. |
 | GraphRAG dipilih tetapi belum ada snapshot aktif | Run eksplisit ditolak sebelum jawaban diproses. | Buat build GraphRAG di halaman **Sumber** dan tunggu status aktif. |

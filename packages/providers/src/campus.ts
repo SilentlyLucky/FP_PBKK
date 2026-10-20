@@ -67,7 +67,7 @@ const CampusResponseSchema = z.object({
         })
         .optional(),
     })
-  .optional(),
+    .optional(),
 });
 
 const CampusStreamChunkSchema = z.object({
@@ -110,9 +110,46 @@ export interface CampusCapabilityStreamResult {
   };
 }
 
+export interface CampusRequestDiagnostics {
+  phase: "request_headers" | "response_headers" | "response_body";
+  elapsedMs: number;
+  responseStatus?: number;
+  transportCode?: CampusTransportErrorCode;
+  responseHeadersMs?: number;
+  firstChunkMs?: number | null;
+  finishReasonSeen?: boolean;
+  doneMarkerSeen?: boolean;
+  outputTruncated?: boolean;
+  outputEmpty?: boolean;
+}
+
+type CampusTransportErrorCode =
+  | "ECONNRESET"
+  | "ECONNREFUSED"
+  | "ENOTFOUND"
+  | "EAI_AGAIN"
+  | "ETIMEDOUT"
+  | "UND_ERR_CONNECT_TIMEOUT"
+  | "UND_ERR_HEADERS_TIMEOUT"
+  | "UND_ERR_SOCKET"
+  | "OTHER";
+
+const campusTransportErrorCodes = new Set<CampusTransportErrorCode>([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
 export interface CampusProviderConfig {
   readonly apiKey: string;
   readonly timeoutMs?: number;
+  /** Disable model reasoning when the caller needs a short structured response. */
+  readonly disableThinking?: boolean;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -127,11 +164,13 @@ export class ProviderRequestError extends Error {
     readonly code:
       | "AUTH_REQUIRED"
       | "PROVIDER_HTTP_ERROR"
+      | "PROVIDER_TRANSPORT_ERROR"
       | "PROVIDER_RESPONSE_INVALID"
       | "PROVIDER_TIMEOUT"
       | "PROVIDER_ABORTED",
     message: string,
     readonly retryable = false,
+    readonly diagnostics?: CampusRequestDiagnostics,
   ) {
     super(message);
     this.name = "ProviderRequestError";
@@ -142,6 +181,7 @@ export class ProviderRequestError extends Error {
 export class CampusChatProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly thinkingOption: { readonly think?: false };
 
   constructor(private readonly config: CampusProviderConfig) {
     if (!config.apiKey.trim()) {
@@ -152,6 +192,7 @@ export class CampusChatProvider {
     }
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.timeoutMs = config.timeoutMs ?? 30_000;
+    this.thinkingOption = config.disableThinking ? { think: false } : {};
   }
 
   async complete(
@@ -164,6 +205,7 @@ export class CampusChatProvider {
       ? AbortSignal.any([options.signal, timeoutSignal])
       : timeoutSignal;
 
+    const requestStartedAt = performance.now();
     let response: Response;
     try {
       response = await this.fetchImpl(CAMPUS_CHAT_COMPLETIONS_ENDPOINT, {
@@ -180,54 +222,79 @@ export class CampusChatProvider {
           messages: request.messages,
           max_tokens: request.maxOutputTokens,
           stream: false,
+          ...this.thinkingOption,
         }),
       });
-    } catch {
-      if (options.signal?.aborted) {
-        throw new ProviderRequestError(
-          "PROVIDER_ABORTED",
-          "Provider request was canceled",
-        );
-      }
-      if (signal.aborted) {
-        throw new ProviderRequestError(
-          "PROVIDER_TIMEOUT",
-          "Provider request timed out",
-        );
-      }
-      throw new ProviderRequestError(
-        "PROVIDER_HTTP_ERROR",
-        "Campus gateway request failed",
-      );
+    } catch (error) {
+      throw requestFailure(options.signal, signal, {
+        phase: "request_headers",
+        elapsedMs: elapsedMs(requestStartedAt),
+        transportCode: safeTransportErrorCode(error),
+      });
     }
 
+    const responseHeadersMs = elapsedMs(requestStartedAt);
+    const responseDiagnostics: CampusRequestDiagnostics = {
+      phase: "response_body",
+      elapsedMs: responseHeadersMs,
+      responseStatus: response.status,
+      responseHeadersMs,
+    };
     if (!response.ok) {
-      throw new ProviderRequestError(
-        response.status === 401 || response.status === 403
-          ? "AUTH_REQUIRED"
-          : "PROVIDER_HTTP_ERROR",
-        `Campus gateway returned HTTP ${response.status}`,
-      );
+      throw httpFailure(response.status, {
+        ...responseDiagnostics,
+        phase: "response_headers",
+      });
     }
 
     let json: unknown;
     try {
       json = await response.json();
     } catch {
+      const diagnostics = {
+        ...responseDiagnostics,
+        elapsedMs: elapsedMs(requestStartedAt),
+      };
+      if (options.signal?.aborted || signal.aborted) {
+        throw requestFailure(options.signal, signal, diagnostics);
+      }
       throw new ProviderRequestError(
         "PROVIDER_RESPONSE_INVALID",
         "Campus gateway returned invalid JSON",
+        false,
+        diagnostics,
       );
     }
 
     const parsed = CampusResponseSchema.safeParse(json);
-    const content = parsed.success
-      ? parsed.data.choices[0]?.message.content
-      : undefined;
+    const choice = parsed.success ? parsed.data.choices[0] : undefined;
+    const content = choice?.message.content;
+    const completedDiagnostics = {
+      ...responseDiagnostics,
+      elapsedMs: elapsedMs(requestStartedAt),
+    };
     if (!parsed.success || typeof content !== "string") {
       throw new ProviderRequestError(
         "PROVIDER_RESPONSE_INVALID",
         "Campus gateway response did not match the expected chat completion shape",
+        false,
+        completedDiagnostics,
+      );
+    }
+    if (choice?.finish_reason === "length") {
+      throw new ProviderRequestError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Campus gateway response was truncated at the output token limit",
+        false,
+        { ...completedDiagnostics, outputTruncated: true },
+      );
+    }
+    if (!content.trim()) {
+      throw new ProviderRequestError(
+        "PROVIDER_RESPONSE_INVALID",
+        "Campus gateway returned no visible response text",
+        false,
+        { ...completedDiagnostics, outputEmpty: true },
       );
     }
 
@@ -321,7 +388,9 @@ export class CampusChatProvider {
     const signal = options.signal
       ? AbortSignal.any([options.signal, timeoutSignal])
       : timeoutSignal;
+    const requestStartedAt = performance.now();
     let response: Response;
+    let responseHeadersMs: number;
     try {
       response = await this.fetchImpl(CAMPUS_CHAT_COMPLETIONS_ENDPOINT, {
         method: "POST",
@@ -339,10 +408,16 @@ export class CampusChatProvider {
           stream: true,
           stream_options: { include_usage: true },
           response_format: CAPABILITY_OUTPUT_SCHEMA,
+          ...this.thinkingOption,
         }),
       });
-    } catch {
-      throw requestFailure(options.signal, signal);
+      responseHeadersMs = elapsedMs(requestStartedAt);
+    } catch (error) {
+      throw requestFailure(options.signal, signal, {
+        phase: "request_headers",
+        elapsedMs: elapsedMs(requestStartedAt),
+        transportCode: safeTransportErrorCode(error),
+      });
     }
     if (!response.ok) throw httpFailure(response.status);
     if (!response.body) {
@@ -359,11 +434,23 @@ export class CampusChatProvider {
     let responseModel: string | null = null;
     let textDeltaObserved = false;
     let buffer = "";
+    const diagnostics: CampusRequestDiagnostics = {
+      phase: "response_body",
+      elapsedMs: 0,
+      responseStatus: response.status,
+      responseHeadersMs,
+      firstChunkMs: null,
+      finishReasonSeen: false,
+      doneMarkerSeen: false,
+    };
     const consumeLine = (rawLine: string) => {
       const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
       if (!line.startsWith("data:")) return false;
       const payload = line.slice(5).trimStart();
-      if (payload === "[DONE]") return true;
+      if (payload === "[DONE]") {
+        diagnostics.doneMarkerSeen = true;
+        return true;
+      }
       if (!payload) return false;
       let value: unknown;
       try {
@@ -382,6 +469,14 @@ export class CampusChatProvider {
         );
       }
       responseModel ??= parsed.data.model ?? null;
+      if (
+        parsed.data.choices.some(
+          (choice) =>
+            choice.finish_reason !== undefined && choice.finish_reason !== null,
+        )
+      ) {
+        diagnostics.finishReasonSeen = true;
+      }
       const delta = parsed.data.choices[0]?.delta.content;
       if (typeof delta === "string" && delta.length > 0) {
         textDeltaObserved = true;
@@ -408,6 +503,13 @@ export class CampusChatProvider {
       let done = false;
       while (!done) {
         const { value, done: streamDone } = await reader.read();
+        if (
+          value &&
+          value.byteLength > 0 &&
+          diagnostics.firstChunkMs === null
+        ) {
+          diagnostics.firstChunkMs = elapsedMs(requestStartedAt);
+        }
         buffer += decoder.decode(value, { stream: !streamDone });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -424,8 +526,19 @@ export class CampusChatProvider {
       }
     } catch (error) {
       await reader.cancel().catch(() => undefined);
-      if (error instanceof ProviderRequestError) throw error;
-      throw requestFailure(options.signal, signal);
+      diagnostics.elapsedMs = elapsedMs(requestStartedAt);
+      if (error instanceof ProviderRequestError) {
+        throw new ProviderRequestError(
+          error.code,
+          error.message,
+          error.retryable,
+          diagnostics,
+        );
+      }
+      throw requestFailure(options.signal, signal, {
+        ...diagnostics,
+        transportCode: safeTransportErrorCode(error),
+      });
     } finally {
       reader.releaseLock();
     }
@@ -459,6 +572,7 @@ export class CampusChatProvider {
           messages: request.messages,
           max_tokens: request.maxOutputTokens,
           stream: false,
+          ...this.thinkingOption,
           tools: [
             {
               type: "function",
@@ -522,32 +636,63 @@ export class CampusChatProvider {
   }
 }
 
+function elapsedMs(startedAt: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function safeTransportErrorCode(error: unknown): CampusTransportErrorCode {
+  const cause =
+    typeof error === "object" && error !== null && "cause" in error
+      ? error.cause
+      : error;
+  const code =
+    typeof cause === "object" && cause !== null && "code" in cause
+      ? cause.code
+      : undefined;
+  return typeof code === "string" &&
+    campusTransportErrorCodes.has(code as CampusTransportErrorCode)
+    ? (code as CampusTransportErrorCode)
+    : "OTHER";
+}
+
 function requestFailure(
   callerSignal: AbortSignal | undefined,
   combinedSignal: AbortSignal,
+  diagnostics?: CampusRequestDiagnostics,
 ): ProviderRequestError {
   if (callerSignal?.aborted) {
     return new ProviderRequestError(
       "PROVIDER_ABORTED",
       "Provider request was canceled",
+      false,
+      diagnostics,
     );
   }
   if (combinedSignal.aborted) {
     return new ProviderRequestError(
       "PROVIDER_TIMEOUT",
       "Provider request timed out",
+      false,
+      diagnostics,
     );
   }
   return new ProviderRequestError(
-    "PROVIDER_HTTP_ERROR",
-    "Campus gateway request failed",
+    "PROVIDER_TRANSPORT_ERROR",
+    "Campus gateway transport failed before a usable response was received",
+    false,
+    diagnostics,
   );
 }
 
-function httpFailure(status: number): ProviderRequestError {
+function httpFailure(
+  status: number,
+  diagnostics?: CampusRequestDiagnostics,
+): ProviderRequestError {
   return new ProviderRequestError(
     status === 401 || status === 403 ? "AUTH_REQUIRED" : "PROVIDER_HTTP_ERROR",
     `Campus gateway returned HTTP ${status}`,
+    false,
+    diagnostics,
   );
 }
 

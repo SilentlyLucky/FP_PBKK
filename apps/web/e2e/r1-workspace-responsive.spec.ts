@@ -3,7 +3,13 @@ import { resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-const viewportWidths = [320, 360, 768, 1024, 1440] as const;
+const viewportSizes = [
+  [1920, 1080],
+  [1440, 900],
+  [1280, 800],
+  [768, 1024],
+  [390, 844],
+] as const;
 const primaryRoutes = [
   { href: "/workspace", name: "Workspace" },
   { href: "/sources", name: "Sumber" },
@@ -140,8 +146,12 @@ test("Workspace shell reflows without horizontal overflow", async ({
     focusedControl.comparisonBackgroundColor,
   );
 
-  for (const width of viewportWidths) {
-    await page.setViewportSize({ width, height: 900 });
+  for (const [width, height] of viewportSizes) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/workspace");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Workspace" }),
+    ).toBeVisible();
     if (width <= 640) {
       const toggle = page.getByRole("button", { name: "Buka navigasi" });
       await toggle.click();
@@ -167,6 +177,56 @@ test("Workspace shell reflows without horizontal overflow", async ({
       dimensions.viewportWidth,
     );
 
+    const contextButton = page
+      .getByTestId("workspace-chat-panel")
+      .getByRole("button", { name: "Konteks", exact: true });
+    if (width > 1360) {
+      await expect(
+        page.getByRole("complementary", { name: "Konteks percakapan" }),
+      ).toBeVisible();
+    } else {
+      await expect(contextButton).toHaveAttribute("aria-expanded", "false");
+      await contextButton.click();
+      await expect(
+        page.getByRole("complementary", { name: "Konteks percakapan" }),
+      ).toBeVisible();
+      if (width === 1280 || width === 390) {
+        await page.screenshot({
+          path: resolve(screenshotDirectory, `workspace-${width}-context.png`),
+          fullPage: true,
+          style: "nextjs-portal { display: none !important; }",
+        });
+      }
+      await page
+        .getByRole("complementary", { name: "Konteks percakapan" })
+        .getByRole("button", { name: "Tutup panel konteks" })
+        .click();
+      await expect(contextButton).toHaveAttribute("aria-expanded", "false");
+    }
+
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    });
+    const composerBottomGap = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>(
+        '[data-testid="workspace-chat-panel"]',
+      );
+      const composer = document.querySelector<HTMLElement>(
+        "#workspace-composer",
+      );
+      if (!panel || !composer) return Number.POSITIVE_INFINITY;
+      return Math.round(
+        panel.getBoundingClientRect().bottom -
+          composer.getBoundingClientRect().bottom,
+      );
+    });
+    expect(
+      composerBottomGap,
+      `the composer should stay docked at ${width}px`,
+    ).toBeLessThanOrEqual(24);
     await page.screenshot({
       path: resolve(screenshotDirectory, `workspace-${width}.png`),
       fullPage: true,

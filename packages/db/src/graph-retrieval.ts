@@ -12,7 +12,6 @@ import {
 } from "./knowledge.ts";
 import {
   loadCurrentWorkspaceSourceScope,
-  MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES,
   workspaceSourceManifestMatchesCurrent,
   type WorkspaceSourceManifestEntry,
 } from "./workspace-source-manifest.ts";
@@ -48,7 +47,6 @@ export const GRAPH_RETRIEVAL_HARD_BOUNDS: GraphRetrievalBounds = {
   maxEstimatedContextTokens: 3_000,
 };
 
-const MAX_SOURCE_SELECTION = MAX_WORKSPACE_SOURCE_MANIFEST_ENTRIES;
 const MAX_LEXICAL_SCAN_ROWS = 600;
 const MAX_GRAPH_SCAN_ROWS = 1_200;
 const SQL_TIMEOUT_MS = 1_500;
@@ -1036,7 +1034,6 @@ async function loadGraphEvidenceRows(
         eq(schema.graphAssertionVersions.status, "extracted_supported"),
         eq(schema.graphEvidence.eligible, true),
         eq(schema.documentVersions.eligible, true),
-        eq(schema.documents.trust, "campus_indexer_allowed"),
         isNull(schema.documents.deletedAt),
         or(
           sql`coalesce(${schema.graphAssertionVersions.qualifiers}->>'relationKind', '') <> 'structural_navigation'`,
@@ -1126,20 +1123,7 @@ export async function retrieveKnowledgeContext(
       request.projectId,
       sourceIds,
     );
-    const permissionExcludedSources = request.requireCampusPermission
-      ? sourceScope.sources.filter(
-          (source) => source.permission !== "campus_indexer_allowed",
-        )
-      : [];
-    const activeSources = request.requireCampusPermission
-      ? sourceScope.sources.filter(
-          (source) => source.permission === "campus_indexer_allowed",
-        )
-      : sourceScope.sources;
-    const egressBlockedAllSelected =
-      request.requireCampusPermission === true &&
-      sourceScope.sources.length > 0 &&
-      activeSources.length === 0;
+    const activeSources = sourceScope.sources;
     if (request.sourceManifest) {
       if (
         sourceScope.invalidSelection ||
@@ -1166,8 +1150,7 @@ export async function retrieveKnowledgeContext(
       sourceScopeClipped: sourceScope.clipped,
       sourceSelectionInvalid: sourceScope.invalidSelection,
       sourceSelectionEmpty: emptySourceSelection,
-      sourcePermissionExcludedCount: permissionExcludedSources.length,
-      maxSources: MAX_SOURCE_SELECTION,
+      sourcePermissionExcludedCount: 0,
     };
 
     if (emptySourceSelection) {
@@ -1176,8 +1159,6 @@ export async function retrieveKnowledgeContext(
       fallbackReason = "source_selection_not_current_in_project";
       strategyUsed =
         request.strategy === "full_context" ? "full_context" : "lexical";
-    } else if (egressBlockedAllSelected) {
-      fallbackReason = "source_permission_not_granted";
     }
 
     let lexicalChunks: PackedChunk[] = [];
@@ -1228,7 +1209,6 @@ export async function retrieveKnowledgeContext(
     } else if (
       emptySourceSelection ||
       sourceScope.invalidSelection ||
-      egressBlockedAllSelected ||
       request.strategy === "lexical"
     ) {
       strategyUsed = "lexical";
@@ -1439,9 +1419,7 @@ export async function retrieveKnowledgeContext(
         ...bounds,
         requestedStrategy: request.strategy,
         strategyUsed,
-        requireCampusPermission: request.requireCampusPermission ?? false,
         lexicalQueryMode: request.lexicalQueryMode ?? "all_prompt_terms",
-        maxSources: MAX_SOURCE_SELECTION,
         lexicalScanRows: MAX_LEXICAL_SCAN_ROWS,
         graphScanRows: MAX_GRAPH_SCAN_ROWS,
         statementTimeoutMs: SQL_TIMEOUT_MS,
@@ -1486,7 +1464,6 @@ export async function currentCampusRetrievalEvidence(
       documentId: schema.documents.id,
       activeVersionId: schema.documents.activeVersionId,
       deletedAt: schema.documents.deletedAt,
-      permission: schema.documents.trust,
       versionId: schema.documentVersions.id,
       checksum: schema.documentVersions.checksum,
       eligible: schema.documentVersions.eligible,
@@ -1527,7 +1504,6 @@ export async function currentCampusRetrievalEvidence(
       row.activeVersionId === item.documentVersionId &&
       row.eligible &&
       !row.deletedAt &&
-      row.permission === "campus_indexer_allowed" &&
       row.checksum === item.sourceChecksum &&
       row.content === item.chunkContent,
     );

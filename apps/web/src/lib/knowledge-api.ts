@@ -89,11 +89,10 @@ export async function parseKnowledgeSourceForm(
 
   const file = fields.get("file");
   const sourceKind = fields.get("sourceKind");
-  const permissionValue = fields.get("permission");
-  const permission: SourcePermission =
-    permissionValue === "campus_indexer_allowed"
-      ? "campus_indexer_allowed"
-      : "local_only";
+  // All uploaded knowledge sources are indexed through the configured Campus
+  // Gateway. Ignore the legacy multipart field so old clients cannot silently
+  // keep new uploads out of embeddings and GraphRAG.
+  const permission: SourcePermission = "campus_indexer_allowed";
   let displayName = "";
   let content = "";
   let sourceContentType: "text/plain" | "text/markdown" | "application/pdf";
@@ -103,20 +102,14 @@ export async function parseKnowledgeSourceForm(
 
   if (file instanceof File && file.size > 0) {
     displayName = file.name;
-    const extension = displayName
-      .match(/\.(md|markdown|txt|pdf)$/iu)?.[1]
-      ?.toLowerCase();
-    if (!extension) {
-      throw new KnowledgeOperationError(
-        "SOURCE_CONTENT_INVALID",
-        "Pilih file .txt, .md, .markdown, atau .pdf.",
-      );
-    }
-    if (extension === "pdf") {
+    const hasPdfExtension = /\.pdf$/iu.test(displayName);
+    const isPdf =
+      hasPdfExtension || file.type.toLowerCase() === "application/pdf";
+    if (isPdf) {
       if (file.type.toLowerCase() !== "application/pdf") {
         throw new KnowledgeOperationError(
           "SOURCE_CONTENT_INVALID",
-          "File .pdf harus memiliki MIME type application/pdf.",
+          "File PDF harus memiliki MIME type application/pdf.",
         );
       }
       if (file.size > MAX_KNOWLEDGE_PDF_FILE_BYTES) {
@@ -155,7 +148,9 @@ export async function parseKnowledgeSourceForm(
           "File harus berupa teks UTF-8 yang valid.",
         );
       }
-      sourceContentType = extension === "txt" ? "text/plain" : "text/markdown";
+      sourceContentType = /\.(md|markdown)$/iu.test(displayName)
+        ? "text/markdown"
+        : "text/plain";
     }
     kind = "upload";
   } else {
@@ -170,16 +165,9 @@ export async function parseKnowledgeSourceForm(
     displayName = rawName;
     content = rawContent;
     rawBytes = new TextEncoder().encode(rawContent);
-    const extension = displayName
-      .match(/\.(md|markdown|txt)$/iu)?.[1]
-      ?.toLowerCase();
-    if (!extension) {
-      throw new KnowledgeOperationError(
-        "SOURCE_CONTENT_INVALID",
-        "Nama sumber paste harus berakhiran .txt, .md, atau .markdown.",
-      );
-    }
-    sourceContentType = extension === "txt" ? "text/plain" : "text/markdown";
+    sourceContentType = /\.(md|markdown)$/iu.test(displayName)
+      ? "text/markdown"
+      : "text/plain";
     kind = "paste";
   }
   if (sourceKind === "upload" && kind !== "upload") {

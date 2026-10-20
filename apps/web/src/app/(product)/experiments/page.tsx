@@ -5,9 +5,9 @@ export default function ExperimentsPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Evaluasi prompt"
+        eyebrow="Bandingkan jawaban"
         title="Pengujian"
-        description="Bandingkan baseline dan kandidat tersimpan dalam batch berpasangan pada kasus development dan holdout dengan konteks dibekukan; hasilnya mendukung peninjauan, bukan klaim performa umum."
+        description="Masukkan prompt yang ingin diuji, lalu lihat jawaban baseline dan hasil dengan Flowku berdampingan."
       />
       <ExperimentsWorkspace />
     </>

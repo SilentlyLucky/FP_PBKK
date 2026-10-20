@@ -3,8 +3,9 @@
   --experiment-muted: #64748b;
   --experiment-border: #e2e8f0;
   --experiment-blue: #2563eb;
+  --experiment-flowku: #0f766e;
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .experiments > :global(.error-message),
@@ -21,11 +22,11 @@
 }
 
 .experiments :global(.card > header) {
-  padding: 18px 20px 12px;
+  padding: 20px 22px 12px;
 }
 
 .experiments :global(.card > header + div) {
-  padding-inline: 20px;
+  padding-inline: 22px;
 }
 
 .experiments :global(.card > header h2) {
@@ -33,186 +34,224 @@
   letter-spacing: -0.02em;
 }
 
-.setupCard :global(.card-heading-row),
-.reportCard :global(.card-heading-row) {
-  align-items: flex-start;
-}
-
 .setupCard :global(.card > header p) {
-  max-width: 720px;
+  max-width: 680px;
 }
 
 .setupCard :global(.experiment-form) {
-  gap: 18px;
+  gap: 20px;
 }
 
-.setupMode {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 0 20px 16px;
+.promptEditor {
+  gap: 9px;
 }
 
-.setupMode label {
-  display: flex;
-  min-width: 0;
-  min-height: 64px;
-  align-items: flex-start;
-  gap: 10px;
-  border: 1px solid var(--experiment-border);
-  border-radius: 10px;
-  padding: 12px;
-  cursor: pointer;
-}
-
-.setupMode input {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  margin: 2px 0 0;
-  accent-color: var(--experiment-blue);
-}
-
-.setupMode input:focus-visible {
-  outline: 2px solid var(--experiment-blue);
-  outline-offset: 3px;
-}
-
-.setupMode label > span {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.setupMode label strong {
+.promptEditor label {
   color: var(--experiment-ink);
-  font-size: 13px;
-}
-
-.setupMode label small {
-  color: var(--experiment-muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.setupCard :global(.experiment-form-grid) {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.setupCard :global(.experiment-context-summary) {
-  border-color: #bfdbfe;
-  border-radius: 11px;
-  background: #eff6ff;
-}
-
-.setupCard :global(.experiment-context-summary .panel-label) {
-  color: var(--experiment-blue);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.setupCard :global(.experiment-context-summary strong) {
-  color: var(--experiment-ink);
-}
-
-.setupCard :global(.experiment-source-selection) {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  border: 1px solid var(--experiment-border);
-  border-radius: 11px;
-  padding: 14px;
-}
-
-.setupCard :global(.experiment-source-selection legend) {
-  padding-inline: 5px;
-  color: var(--experiment-ink);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
 }
 
-.setupCard :global(.experiment-source-list) {
-  display: grid;
-  gap: 8px;
+.promptInput {
+  min-height: 176px;
+  border-color: #cbd5e1;
+  border-radius: 12px;
+  background: #fcfdff;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.65;
 }
 
-.setupCard :global(.experiment-source-list label) {
+.promptInput:focus-visible {
+  border-color: var(--experiment-blue);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.baselineSummary {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  border: 1px solid #edf2f7;
-  border-radius: 9px;
-  padding: 10px 12px;
-  cursor: pointer;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 11px;
+  background: #f8fbff;
+  padding: 12px 14px;
 }
 
-.setupCard :global(.experiment-source-list label span) {
+.baselineMarker {
+  width: 4px;
+  min-height: 34px;
+  flex: none;
+  border-radius: 4px;
+  background: var(--experiment-blue);
+}
+
+.baselineSummary > div {
   display: grid;
+  min-width: 0;
   gap: 3px;
 }
 
-.setupCard :global(.experiment-source-list small) {
-  color: var(--experiment-muted);
-  font-size: 11px;
-  line-height: 1.4;
+.summaryLabel {
+  color: var(--experiment-blue);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.setupCard :global(.experiment-input) {
-  min-height: 152px;
-  line-height: 1.55;
-}
-
-.setupCard :global(.experiment-run-actions) {
-  align-items: center;
-}
-
-.reportCard :global(.experiment-report-content) {
-  gap: 18px;
-}
-
-.reportCard :global(.experiment-report-meta) {
-  align-items: center;
-  border-bottom-color: var(--experiment-border);
-}
-
-.reportCard :global(.experiment-facts) {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  border: 1px solid #edf2f7;
-  border-radius: 11px;
-  background: #f8fafc;
-  padding: 14px;
-}
-
-.reportCard :global(.experiment-facts dt) {
-  font-size: 11px;
-  letter-spacing: 0.02em;
-}
-
-.reportCard :global(.experiment-facts dd) {
+.baselineSummary strong {
+  overflow-wrap: anywhere;
   color: var(--experiment-ink);
   font-size: 13px;
 }
 
-.reportCard :global(.experiment-fact-input) {
-  grid-column: 1 / -1;
+.modelSummary {
+  margin-left: auto;
+  color: var(--experiment-muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.promptActions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 16px;
+}
+
+.promptActions > :global(.helper) {
+  max-width: 380px;
+}
+
+.advancedSetup,
+.historyDisclosure,
+.reportDetails,
+.decisionDisclosure {
+  min-width: 0;
   border-top: 1px solid var(--experiment-border);
+  padding-top: 14px;
+}
+
+.advancedSetup {
+  margin-top: 22px;
+}
+
+.advancedSetup > summary,
+.historyDisclosure > summary,
+.reportDetails > summary,
+.decisionDisclosure > summary {
+  width: fit-content;
+  color: #475569;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  list-style-position: inside;
+}
+
+.advancedSetup > summary:hover,
+.historyDisclosure > summary:hover,
+.reportDetails > summary:hover,
+.decisionDisclosure > summary:hover {
+  color: var(--experiment-ink);
+}
+
+.advancedSetup > summary:focus-visible,
+.historyDisclosure > summary:focus-visible,
+.reportDetails > summary:focus-visible,
+.decisionDisclosure > summary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--experiment-blue);
+  outline-offset: 4px;
+}
+
+.advancedSetup > :global(.helper) {
+  margin: 10px 0 16px;
+}
+
+.reportCard :global(.experiment-report-content) {
+  gap: 16px;
+}
+
+.historyDisclosure {
+  order: 2;
+}
+
+.historyControls {
+  display: flex;
+  max-width: 520px;
+  align-items: flex-end;
+  gap: 8px;
   padding-top: 12px;
+}
+
+.historyControls label {
+  flex: 1;
+}
+
+.reportStatus {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  color: var(--experiment-muted);
+}
+
+.testPrompt {
+  display: grid;
+  gap: 7px;
+  border-left: 3px solid #94a3b8;
+  border-radius: 0 9px 9px 0;
+  background: #f8fafc;
+  padding: 12px 15px;
+}
+
+.testPrompt p {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reportCard .summaryLabel {
+  color: var(--experiment-muted);
 }
 
 .reportCard :global(.experiment-answer-grid) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
-.reportCard :global(.experiment-answer-column),
-.reportCard :global(.experiment-metric-card) {
+.reportCard :global(.experiment-answer-column) {
+  min-width: 0;
   border-color: var(--experiment-border);
   border-radius: 12px;
-  padding: 15px;
+  padding: 16px;
+}
+
+.baselineAnswer {
+  border-top: 3px solid #94a3b8 !important;
+}
+
+.flowkuAnswer {
+  border-top: 3px solid var(--experiment-flowku) !important;
+  background: #fbfefd;
+}
+
+.noFlowkuCandidate {
+  align-content: start;
+  color: var(--experiment-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.noFlowkuCandidate p {
+  margin: 8px 0 0;
 }
 
 .reportCard :global(.experiment-answer-column h3) {
@@ -220,66 +259,117 @@
   font-size: 14px;
 }
 
-.reportCard :global(.experiment-answer-text) {
-  min-height: 90px;
-  max-height: 380px;
+.reportCard :global(.experiment-answer-column details) {
+  margin-bottom: 12px;
+  color: var(--experiment-muted);
+  font-size: 12px;
+}
+
+.reportCard :global(.experiment-answer-column details summary),
+.reportCard :global(.experiment-verification summary) {
+  cursor: pointer;
+}
+
+.reportCard :global(.experiment-answer-column details pre) {
+  max-height: 220px;
   overflow: auto;
-  border: 1px solid #e7edf5;
-  border-radius: 9px;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
   background: #f8fafc;
-  padding: 13px;
+  padding: 10px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reportCard :global(.experiment-answer-text) {
+  min-height: 100px;
+  max-height: 420px;
+  overflow: auto;
+  border: 0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
   color: #1e293b;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .reportCard :global(.experiment-answer-facts) {
+  margin-top: 12px;
   border-top: 1px solid #edf2f7;
   padding-top: 9px;
   color: var(--experiment-muted);
   font-size: 12px;
 }
 
-.reportCard :global(.experiment-metrics-grid) {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+.reportDetails,
+.decisionDisclosure {
+  order: 3;
 }
 
-.reportCard :global(.experiment-metric-card strong) {
+.reportDetails > :global(.experiment-facts) {
+  margin-top: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid #edf2f7;
+  background: transparent;
+  padding: 12px 0;
+}
+
+.reportDetails :global(.experiment-facts dt) {
+  color: var(--experiment-muted);
+  font-size: 11px;
+}
+
+.reportDetails :global(.experiment-facts dd) {
   color: var(--experiment-ink);
   font-size: 12px;
 }
 
-.reportCard :global(.experiment-metric-card > span:not(.helper)) {
+.reportDetails :global(.experiment-metric-card) {
+  margin-bottom: 14px;
+  border-color: var(--experiment-border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.reportDetails :global(.experiment-metric-card strong) {
   color: var(--experiment-ink);
-  font-size: 14px;
+  font-size: 12px;
+}
+
+.reportDetails :global(.experiment-metric-card > span:not(.helper)) {
+  color: var(--experiment-ink);
+  font-size: 13px;
   font-weight: 650;
 }
 
-.reportCard :global(.experiment-decision) {
+.reportCard :global(.experiment-report-actions) {
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.decisionDisclosure > :global(.experiment-decision) {
+  margin-top: 12px;
   border-color: #dbeafe;
   border-radius: 12px;
   background: #f8fbff;
   padding: 16px;
 }
 
-.reportCard :global(.experiment-decision h3) {
+.decisionDisclosure :global(.experiment-decision h3) {
   color: var(--experiment-ink);
 }
 
-.reportCard :global(.experiment-decision-actions) {
+.decisionDisclosure :global(.experiment-decision-actions) {
   gap: 8px;
-}
-
-@media (max-width: 960px) {
-  .setupCard :global(.experiment-form-grid) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .reportCard :global(.experiment-facts) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 640px) {
@@ -291,18 +381,35 @@
     padding-inline: 16px;
   }
 
-  .setupCard :global(.experiment-form-grid),
-  .reportCard :global(.experiment-facts),
-  .reportCard :global(.experiment-answer-grid) {
-    grid-template-columns: minmax(0, 1fr);
+  .promptInput {
+    min-height: 148px;
+    font-size: 14px;
   }
 
-  .setupMode {
-    grid-template-columns: minmax(0, 1fr);
-    padding-inline: 16px;
+  .baselineSummary {
+    align-items: flex-start;
   }
 
-  .reportCard :global(.experiment-fact-input) {
-    grid-column: auto;
+  .modelSummary {
+    max-width: 34%;
+    padding-top: 2px;
+  }
+
+  .promptActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .promptActions :global(button) {
+    width: 100%;
+  }
+
+  .historyControls {
+    align-items: stretch;
+  }
+
+  .reportCard :global(.experiment-answer-grid),
+  .reportDetails > :global(.experiment-facts) {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

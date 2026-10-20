@@ -359,41 +359,6 @@ select {
   gap: 8px;
 }
 
-.permission-choice {
-  display: grid;
-  min-width: 0;
-  min-height: 68px;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
-  padding: 12px;
-  cursor: pointer;
-}
-
-.permission-choice input {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-  margin: 0;
-  accent-color: var(--primary);
-}
-
-.permission-choice > span {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.permission-choice strong {
-  color: var(--foreground);
-  font-size: 13px;
-  font-weight: 600;
-}
-
 .source-choice-disabled {
   background: var(--canvas);
   cursor: not-allowed;
@@ -2294,10 +2259,6 @@ select {
   margin-top: 10px;
 }
 
-.source-permission-toggle {
-  margin-top: 10px;
-}
-
 .build-source-selection,
 .retrieval-source-selection {
   max-height: 360px;
@@ -2362,11 +2323,6 @@ select {
 
 .build-budget-field {
   max-width: 360px;
-}
-
-.build-egress-confirmation {
-  border-top: 1px solid #bfdbfe;
-  padding-top: 12px;
 }
 
 .build-row-heading > div {
@@ -3400,5 +3356,114 @@ select {
 
   .local-workspace-actions > a {
     width: 100%;
+  }
+}
+
+/* Workspace uses the viewport as a four-region conversation shell. */
+.workspace-shell {
+  display: grid;
+  height: 100dvh;
+  min-height: 100dvh;
+  grid-template-columns: 192px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.workspace-shell .sidebar {
+  height: 100dvh;
+  overflow-y: auto;
+}
+
+.workspace-shell .main-column {
+  display: flex;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-shell .topbar {
+  position: relative;
+  min-height: 60px;
+  flex: none;
+  border-bottom-color: var(--border);
+  padding-inline: 20px;
+}
+
+.workspace-shell .current-section,
+.workspace-shell .topbar-divider {
+  display: none;
+}
+
+.workspace-shell .project-row {
+  flex: 1;
+}
+
+.workspace-shell .shell-main {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  flex: 1 1 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+@media (max-width: 980px) {
+  .workspace-shell {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-shell {
+    display: block;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: auto;
+  }
+
+  .workspace-shell .sidebar {
+    height: auto;
+    overflow: visible;
+  }
+
+  .workspace-shell .main-column {
+    height: calc(100dvh - 60px);
+    min-height: 420px;
+    overflow: hidden;
+  }
+
+  .workspace-shell .topbar {
+    min-height: 56px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 6px 12px;
+  }
+
+  .workspace-shell .project-row {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+    justify-content: flex-start;
+  }
+
+  .workspace-shell .project-select-label {
+    display: none;
+  }
+
+  .workspace-shell .project-controls {
+    min-width: 0;
+  }
+
+  .workspace-shell .project-select {
+    min-height: 44px;
+  }
+
+  .workspace-shell .readiness-link {
+    display: none;
+  }
+
+  .workspace-shell .shell-main {
+    min-height: 0;
   }
 }

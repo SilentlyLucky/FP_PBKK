@@ -378,10 +378,33 @@ describe.skipIf(!integrationRequested)(
           requestedModel: mockModel,
           maxModelCalls,
           idempotencyKey,
-          allowCampusEgress: true,
           providerConnectionId: testProviderConnectionId,
         });
       };
+
+      const localOnlySource = await createSource(
+        "private.md",
+        "Private material must stay out of campus indexing.",
+        "local_only",
+      );
+      await expect(
+        previewGraphBuild(
+          database,
+          testProjectId,
+          { sourceIds: [localOnlySource.sourceId], requestedModel: mockModel },
+          { keyConfigured: true, environmentModel: mockModel },
+        ),
+      ).rejects.toMatchObject({ code: "SOURCE_PERMISSION_REQUIRED" });
+      await expect(
+        enqueueGraphBuild(database, {
+          projectId: testProjectId,
+          sourceIds: [localOnlySource.sourceId],
+          requestedModel: mockModel,
+          maxModelCalls: 1,
+          idempotencyKey: `graph-private-${randomUUID()}`,
+          providerConnectionId: testProviderConnectionId,
+        }),
+      ).rejects.toMatchObject({ code: "SOURCE_PERMISSION_REQUIRED" });
 
       const sourceA = await createSource(
         "checkout.md",
@@ -1164,7 +1187,6 @@ describe.skipIf(!integrationRequested)(
         requestedModel: mockModel,
         maxModelCalls: 2,
         idempotencyKey: `graph-markdown-links-${randomUUID()}`,
-        allowCampusEgress: true,
         providerConnectionId,
       });
       const calls = { count: 0 };

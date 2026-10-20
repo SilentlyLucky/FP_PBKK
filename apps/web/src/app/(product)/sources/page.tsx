@@ -5,9 +5,8 @@ export default function SourcesPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Konteks dan referensi"
         title="Sumber"
-        description="Kelola dokumen yang dapat dipilih untuk mendukung tugas di Workspace."
+        description="Kelola file proyek dan telusuri hubungan antar sumber."
       />
       <KnowledgeWorkspace />
     </>
