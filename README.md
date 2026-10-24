@@ -1,3 +1,5 @@
+c		f	
+
 # PromptLab
 
 PromptLab adalah aplikasi agentic AI local-first untuk membantu menyusun,
@@ -180,7 +182,7 @@ dan dapat berisi credential.
 docker compose --env-file .env.container -f compose.yaml up -d --build --wait
 ```
 
-Buka <http://127.0.0.1:3000>. Untuk Codex, buka **Pengaturan**, pilih
+Buka [http://127.0.0.1:3000](http://127.0.0.1:3000). Untuk Codex, buka **Pengaturan**, pilih
 **Login Codex**, lalu ikuti autentikasi di browser. Setiap instalasi Docker
 memiliki direktori autentikasi Codex sendiri.
 

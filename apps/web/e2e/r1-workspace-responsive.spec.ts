@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { projectPicker } from "./helpers/project-picker";
 
 const viewportSizes = [
   [1920, 1080],
@@ -96,8 +97,9 @@ test("Workspace shell reflows without horizontal overflow", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: "Workspace" }),
   ).toBeVisible();
-  await expect(page.locator("#active-project option").first()).toHaveText(
-    "Belum ada proyek",
+  await expect(projectPicker(page)).toHaveAttribute(
+    "aria-label",
+    "Proyek: Belum ada proyek",
     { timeout: 20_000 },
   );
   await expect(
@@ -252,7 +254,7 @@ test("Workspace shell reflows without horizontal overflow", async ({
       ["inactive navigation", ".nav-link:not([aria-current])"],
       ["active navigation", '.nav-link[aria-current="page"]'],
       ["composer help", "#workspace-composer-help"],
-      ["project selector boundary", ".project-select"],
+      ["project selector boundary", "#active-project"],
     ].flatMap(([label, selector]) => {
       const element = document.querySelector(selector!);
       if (!element) return [];

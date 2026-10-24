@@ -50,7 +50,7 @@
 }
 
 .searchBox input::placeholder {
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .toolbar > label:not(.searchBox, .sortControl) {
@@ -79,7 +79,7 @@
   border: 1px solid var(--border);
   border-radius: 11px;
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+  box-shadow: none;
 }
 
 .listPanel {
@@ -107,7 +107,7 @@
 .listHeader > span {
   margin: 2px 0 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .historyList {
@@ -141,12 +141,12 @@
 }
 
 .historyItem:hover {
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .historyItem.selected {
   border-left-color: var(--primary);
-  background: #eff6ff;
+  background: var(--accent-soft);
 }
 
 .itemIcon {
@@ -154,10 +154,9 @@
   width: 36px;
   height: 36px;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface-muted);
-  color: var(--primary);
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
 }
 
 .itemMain,
@@ -182,7 +181,7 @@
 
 .itemMain > span {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -206,7 +205,7 @@
 .modelLabel {
   color: var(--muted-foreground);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .detailPanel {
@@ -231,11 +230,9 @@
 }
 
 .detailEyebrow {
-  color: var(--primary);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .detailTitle h2 {
@@ -270,7 +267,7 @@
 
 .facts dt {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -284,7 +281,7 @@
 
 .mono {
   font-family: var(--font-code);
-  font-size: 11px !important;
+  font-size: 12px !important;
   overflow-wrap: anywhere;
 }
 
@@ -300,15 +297,15 @@
 }
 
 .errorNote {
-  background: #fef2f2;
-  color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-text);
 }
 
 .decisionNote {
   display: grid;
   gap: 5px;
   border-left: 3px solid var(--primary);
-  background: #eff6ff;
+  background: var(--accent-soft);
   padding: 11px 13px;
 }
 
@@ -330,7 +327,7 @@
   gap: 9px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 12px;
 }
 
@@ -353,7 +350,7 @@
 .decisionEventsHeading > span,
 .decisionItemHeading time {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .decisionList {
@@ -374,7 +371,7 @@
 
 .decisionItemHeading strong {
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 620;
 }
 
@@ -385,7 +382,7 @@
 .decisionList p {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -408,7 +405,7 @@
 .runOutput p {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .runOutput pre {
@@ -421,7 +418,7 @@
   padding: 11px;
   color: var(--foreground);
   font-family: var(--font-code);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -448,7 +445,7 @@
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 14px;
   color: var(--foreground);
   font-family: var(--font-code);
@@ -513,11 +510,11 @@
 }
 
 .partialWarning {
-  border: 1px solid #fcd34d;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
   border-radius: 9px;
-  background: #fffbeb;
+  background: var(--warning-soft);
   padding: 11px 14px;
-  color: #78350f;
+  color: var(--warning-text);
   font-size: 12px;
 }
 
@@ -543,7 +540,7 @@
 .emptyState > svg,
 .emptyDetail > svg {
   flex: none;
-  color: var(--primary);
+  color: var(--accent-text);
 }
 
 .emptyState h3 {

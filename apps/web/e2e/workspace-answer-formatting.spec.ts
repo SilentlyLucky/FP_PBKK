@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { expectMenuValue } from "./helpers/menu";
 
 const projectId = "7a058ee0-8ef5-4e15-9fc1-e0e3310c8f20";
 const conversationId = "3a4f3461-6317-4cc8-a8aa-25ba25e27f14";
@@ -245,7 +246,7 @@ test("Workspace displays readable math, copyable code, and a safe diagram previe
   await expect(
     page.getByRole("button", { name: "Salin typescript" }),
   ).toBeVisible();
-  await expect(page.locator("#workspace-thinking")).toHaveValue("high");
+  await expectMenuValue(page, "Reasoning effort Codex", "Mendalam");
   await expect(page.locator("#workspace-thinking-help")).toContainText(
     "Tingkat usaha berpikir mengatur seberapa banyak model",
   );

@@ -8,8 +8,58 @@
 .formGrid {
   display: grid;
   min-width: 0;
+  gap: 12px;
+  counter-reset: setup-step;
+}
+
+/* Bagian bertahap bernomor: 1 dataset, 2 prompt dan versi, 3 model, 4 metode. */
+.step,
+.armSelection {
+  position: relative;
+  display: grid;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 16px 16px 52px;
+  counter-increment: setup-step;
+}
+
+.step::before,
+.armSelection::before {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--muted-foreground);
+  content: counter(setup-step);
+  font-family: var(--font-code);
+  font-size: 12px;
+}
+
+.armSelection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  counter-increment: setup-step 3;
+}
+
+@media (max-width: 640px) {
+  .step {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px 14px 14px 46px;
+  }
+
+  .step::before,
+  .armSelection::before {
+    top: 14px;
+    left: 12px;
+  }
 }
 
 .armSelection,
@@ -53,8 +103,19 @@
   align-items: flex-start;
   gap: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px;
+}
+
+/* Metode wajib: chip dengan ikon kunci, bukan kotak centang. */
+.armOptions li {
+  align-items: center;
+  background: var(--surface-muted);
+}
+
+.armOptions li > svg {
+  flex: none;
+  color: var(--muted-foreground);
 }
 
 .sourceList input {
@@ -182,7 +243,7 @@
 .armCard dt,
 .answerFacts dt {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -379,5 +440,35 @@
 
   .usageFacts {
     grid-column: auto;
+  }
+}
+
+/* Pesan penghalang: callout peringatan kecil. */
+.blocker {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  border-radius: 10px;
+  background: var(--warning-soft);
+  padding: 10px 12px;
+  color: var(--warning-text);
+}
+
+.blocker a {
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.armSelection {
+  padding: 16px 16px 16px 52px;
+  border-radius: 14px;
+}
+
+@media (max-width: 640px) {
+  .armSelection {
+    padding: 14px 14px 14px 46px;
+  }
+
+  .armOptions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

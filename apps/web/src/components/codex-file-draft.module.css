@@ -5,7 +5,7 @@
   border: 1px solid var(--border);
   border-left: 3px solid var(--primary);
   border-radius: 9px;
-  background: #f8fbff;
+  background: var(--surface-muted);
   padding: 14px;
 }
 
@@ -22,10 +22,10 @@
   height: 32px;
   flex: none;
   place-items: center;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--accent-border);
   border-radius: 8px;
-  background: #ffffff;
-  color: #1d4ed8;
+  background: var(--surface);
+  color: var(--accent-text);
 }
 
 .heading h4 {
@@ -57,9 +57,9 @@
 
 .disclosure {
   border-radius: 7px;
-  background: #eef5ff;
+  background: var(--accent-soft);
   padding: 10px 12px;
-  color: #334155;
+  color: var(--foreground);
 }
 
 .disclosure ul {
@@ -89,7 +89,7 @@
   resize: vertical;
   border: 1px solid var(--control-boundary);
   border-radius: 7px;
-  background: #ffffff;
+  background: var(--surface);
   padding: 9px 10px;
   color: var(--foreground);
   font-size: 12px;
@@ -103,13 +103,13 @@
 }
 
 .form textarea:disabled {
-  background: #f1f5f9;
+  background: var(--surface-muted);
   color: var(--muted-foreground);
 }
 
 .hint {
   margin-top: -5px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .consent {
@@ -117,7 +117,7 @@
   min-width: 0;
   align-items: flex-start;
   gap: 9px;
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
   line-height: 1.5;
   cursor: pointer;
@@ -148,9 +148,9 @@
   align-items: flex-start;
   gap: 8px;
   border-radius: 7px;
-  background: #fff7ed;
+  background: var(--warning-soft);
   padding: 9px 10px;
-  color: #7c2d12;
+  color: var(--warning-text);
 }
 
 .unavailable svg {
@@ -165,13 +165,13 @@
 }
 
 .feedback {
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--danger-soft);
+  color: var(--danger-text);
 }
 
 .success {
-  background: #ecfdf5;
-  color: #166534;
+  background: var(--success-soft);
+  color: var(--success-text);
 }
 
 .run {

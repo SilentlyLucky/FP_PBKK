@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+} from "react";
 import {
   Background,
   Controls,
@@ -18,6 +24,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ChevronDown, Filter, Search, X } from "lucide-react";
+import { useThemeTokens } from "@/components/theme/use-theme-tokens";
 import styles from "./knowledge-graph-explorer.module.css";
 
 export interface KnowledgeGraphEvidence {
@@ -114,8 +121,7 @@ function buildGraph(assertions: KnowledgeGraphAssertion[]) {
     clusters.push(cluster.sort());
   }
   clusters.sort(
-    (a, b) =>
-      b.length - a.length || (a[0] ?? "").localeCompare(b[0] ?? ""),
+    (a, b) => b.length - a.length || (a[0] ?? "").localeCompare(b[0] ?? ""),
   );
 
   const clusterByEntity = new Map<string, number>();
@@ -156,11 +162,11 @@ function buildGraph(assertions: KnowledgeGraphAssertion[]) {
     source: entityKey(assertion.subject, assertion.subjectType),
     target: entityKey(assertion.object, assertion.objectType),
     type: "smoothstep",
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+    markerEnd: { type: MarkerType.ArrowClosed },
     label: assertion.predicate,
-    labelStyle: { fill: "#475569", fontSize: 10 },
-    labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
-    style: { stroke: "#b9c9e1", strokeWidth: 1.5 },
+    labelStyle: { fontSize: 10 },
+    labelBgStyle: { fillOpacity: 0.9 },
+    style: { strokeWidth: 1.5 },
     data: { assertion },
   }));
   return {
@@ -171,31 +177,66 @@ function buildGraph(assertions: KnowledgeGraphAssertion[]) {
   };
 }
 
+/** Jenis tampilan node; menentukan warna lewat token --graph-*. */
+function entityKind(
+  entityType: string,
+): "concept" | "formula" | "example" | "document" {
+  const type = normalize(entityType);
+  if (/(rumus|formula)/u.test(type)) return "formula";
+  if (/(contoh|example|soal)/u.test(type)) return "example";
+  if (/(dokumen|document|file|sumber)/u.test(type)) return "document";
+  return "concept";
+}
+
 function EntityNode({ data, selected }: NodeProps<GraphNode>) {
   return (
     <div
       className={`${styles.entityNode} ${selected ? styles.entityNodeSelected : ""}`}
+      data-kind={entityKind(data.entityType)}
       title={`${data.label} · ${data.entityType} · ${data.connectedCount} relasi`}
     >
       <Handle type="target" position={Position.Top} className={styles.handle} />
       <strong>{data.label}</strong>
       <span>{data.entityType}</span>
-      <Handle type="source" position={Position.Bottom} className={styles.handle} />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={styles.handle}
+      />
     </div>
   );
 }
 
 const nodeTypes = { knowledgeEntity: EntityNode };
 
-function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource, onBuildGraph }: Props) {
+function GraphCanvas({
+  assertions,
+  hasSnapshot,
+  isStale,
+  sourceIds,
+  onOpenSource,
+  onBuildGraph,
+}: Props) {
   const graph = useMemo(() => buildGraph(assertions), [assertions]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>(graph.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>(graph.edges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>(
+    graph.nodes,
+  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>(
+    graph.edges,
+  );
   const [search, setSearch] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const tokens = useThemeTokens([
+    "--graph-edge",
+    "--graph-grid",
+    "--graph-concept",
+    "--primary",
+    "--surface",
+    "--muted-foreground",
+  ] as const);
 
   useEffect(() => {
     setNodes(graph.nodes);
@@ -223,7 +264,10 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
     return nodes.map((node) => {
       const typeHidden = !visibleTypes.includes(node.data.entityType);
       const match = !query || normalize(node.data.label).includes(query);
-      const focusMatch = !selectedNodeId || node.id === selectedNodeId || relatedNodeIds.has(node.id);
+      const focusMatch =
+        !selectedNodeId ||
+        node.id === selectedNodeId ||
+        relatedNodeIds.has(node.id);
       return {
         ...node,
         hidden: typeHidden,
@@ -238,22 +282,30 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
         const selected = edge.id === selectedEdgeId;
         const hidden =
           !visibleTypes.includes(
-            nodes.find((node) => node.id === edge.source)?.data.entityType ?? "",
+            nodes.find((node) => node.id === edge.source)?.data.entityType ??
+              "",
           ) ||
           !visibleTypes.includes(
-            nodes.find((node) => node.id === edge.target)?.data.entityType ?? "",
+            nodes.find((node) => node.id === edge.target)?.data.entityType ??
+              "",
           );
         return {
           ...edge,
           hidden,
           style: {
-            stroke: selected ? "#2563eb" : "#b9c9e1",
+            stroke: selected ? tokens["--primary"] : tokens["--graph-edge"],
             strokeWidth: selected ? 2.5 : 1.5,
           },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: selected ? tokens["--primary"] : tokens["--graph-edge"],
+          },
+          labelStyle: { fill: tokens["--muted-foreground"], fontSize: 10 },
+          labelBgStyle: { fill: tokens["--surface"], fillOpacity: 0.9 },
           label: selected ? edge.label : undefined,
         };
       }),
-    [edges, nodes, selectedEdgeId, visibleTypes],
+    [edges, nodes, selectedEdgeId, visibleTypes, tokens],
   );
 
   const handleNodeClick = useCallback((_: MouseEvent, node: GraphNode) => {
@@ -282,7 +334,9 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
         return subject === selectedNode.id || object === selectedNode.id;
       })
     : [];
-  const evidence = selectedAssertion?.evidence ?? nodeAssertions.flatMap((item) => item.evidence);
+  const evidence =
+    selectedAssertion?.evidence ??
+    nodeAssertions.flatMap((item) => item.evidence);
 
   if (!hasSnapshot || assertions.length === 0) {
     return (
@@ -294,7 +348,11 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
             ? "Belum ada snapshot graph aktif untuk proyek ini. Tambahkan sumber lalu bangun graph untuk melihat relasinya."
             : "Snapshot aktif belum memiliki relasi terverifikasi dengan bukti sumber."}
         </p>
-        <button type="button" className={styles.emptyAction} onClick={onBuildGraph}>
+        <button
+          type="button"
+          className={styles.emptyAction}
+          onClick={onBuildGraph}
+        >
           Lihat kesiapan pembuatan graph
         </button>
       </div>
@@ -319,14 +377,19 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
             aria-label="Cari node graph"
           />
           {search ? (
-            <button type="button" onClick={() => setSearch("")} aria-label="Hapus pencarian">
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Hapus pencarian"
+            >
               <X aria-hidden="true" size={14} />
             </button>
           ) : null}
         </label>
         <details className={styles.filters}>
           <summary>
-            <Filter aria-hidden="true" size={14} /> Tipe node <ChevronDown aria-hidden="true" size={13} />
+            <Filter aria-hidden="true" size={14} /> Tipe node{" "}
+            <ChevronDown aria-hidden="true" size={13} />
           </summary>
           <div className={styles.filterMenu}>
             <label>
@@ -350,7 +413,8 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
           </div>
         </details>
         <span className={styles.graphCount}>
-          {nodes.length} node · {edges.length} relasi · {graph.clusterCount} kelompok terhubung
+          {nodes.length} node · {edges.length} relasi · {graph.clusterCount}{" "}
+          kelompok terhubung
         </span>
         <button
           type="button"
@@ -361,7 +425,17 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
           {inspectorOpen ? "Tutup detail" : "Tampilkan detail"}
         </button>
       </div>
-      <div className={`${styles.graphWorkspace} ${!inspectorOpen ? styles.graphWorkspaceWide : ""}`}>
+      <ul className={styles.legend} aria-label="Jenis node">
+        {graph.types.map((entityType) => (
+          <li key={entityType} data-kind={entityKind(entityType)}>
+            <i aria-hidden="true" />
+            {entityType}
+          </li>
+        ))}
+      </ul>
+      <div
+        className={`${styles.graphWorkspace} ${!inspectorOpen ? styles.graphWorkspaceWide : ""}`}
+      >
         <div className={styles.canvas} aria-label="Canvas knowledge graph">
           <ReactFlow
             nodes={displayedNodes}
@@ -383,18 +457,21 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
             proOptions={{ hideAttribution: true }}
             aria-label="Knowledge Graph interaktif"
           >
-            <Background color="#dbe4f0" gap={24} size={1} />
+            <Background color={tokens["--graph-grid"]} gap={24} size={1} />
             <Controls showInteractive={false} />
             <MiniMap
               pannable
               zoomable
-              nodeColor="#3b82f6"
-              maskColor="rgb(248 250 252 / 72%)"
+              nodeColor={tokens["--graph-concept"]}
+              maskColor="color-mix(in srgb, var(--canvas) 72%, transparent)"
             />
           </ReactFlow>
         </div>
         {inspectorOpen ? (
-          <aside className={styles.inspector} aria-label="Detail graph terpilih">
+          <aside
+            className={styles.inspector}
+            aria-label="Detail graph terpilih"
+          >
             {selectedNode ? (
               <>
                 <div className={styles.inspectorHeader}>
@@ -402,14 +479,27 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
                     <span>NODE</span>
                     <h3>{selectedNode.data.label}</h3>
                   </div>
-                  <button type="button" onClick={() => setSelectedNodeId(null)} aria-label="Tutup detail node">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNodeId(null)}
+                    aria-label="Tutup detail node"
+                  >
                     <X aria-hidden="true" size={16} />
                   </button>
                 </div>
                 <dl className={styles.nodeFacts}>
-                  <div><dt>Tipe</dt><dd>{selectedNode.data.entityType}</dd></div>
-                  <div><dt>Relasi langsung</dt><dd>{selectedNode.data.connectedCount}</dd></div>
-                  <div><dt>Kelompok terhubung</dt><dd>{selectedNode.data.cluster + 1}</dd></div>
+                  <div>
+                    <dt>Tipe</dt>
+                    <dd>{selectedNode.data.entityType}</dd>
+                  </div>
+                  <div>
+                    <dt>Relasi langsung</dt>
+                    <dd>{selectedNode.data.connectedCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Kelompok terhubung</dt>
+                    <dd>{selectedNode.data.cluster + 1}</dd>
+                  </div>
                 </dl>
                 <section className={styles.inspectorSection}>
                   <h4>Relasi terkait ({nodeAssertions.length})</h4>
@@ -423,14 +513,21 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
                             setSelectedEdgeId(assertion.id);
                           }}
                         >
-                          <span>{assertion.subject} <em>{assertion.predicate}</em> {assertion.object}</span>
+                          <span>
+                            {assertion.subject} <em>{assertion.predicate}</em>{" "}
+                            {assertion.object}
+                          </span>
                           <small>{assertion.evidence.length} bukti</small>
                         </button>
                       </li>
                     ))}
                   </ul>
                 </section>
-                <EvidenceList evidence={evidence} sourceIds={sourceIds} onOpenSource={onOpenSource} />
+                <EvidenceList
+                  evidence={evidence}
+                  sourceIds={sourceIds}
+                  onOpenSource={onOpenSource}
+                />
               </>
             ) : selectedAssertion ? (
               <>
@@ -439,30 +536,48 @@ function GraphCanvas({ assertions, hasSnapshot, isStale, sourceIds, onOpenSource
                     <span>RELASI TERVERIFIKASI</span>
                     <h3>{selectedAssertion.predicate}</h3>
                   </div>
-                  <button type="button" onClick={() => setSelectedEdgeId(null)} aria-label="Tutup detail relasi">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEdgeId(null)}
+                    aria-label="Tutup detail relasi"
+                  >
                     <X aria-hidden="true" size={16} />
                   </button>
                 </div>
                 <p className={styles.statement}>
-                  <strong>{selectedAssertion.subject}</strong> {selectedAssertion.predicate} <strong>{selectedAssertion.object}</strong>
+                  <strong>{selectedAssertion.subject}</strong>{" "}
+                  {selectedAssertion.predicate}{" "}
+                  <strong>{selectedAssertion.object}</strong>
                 </p>
-                <EvidenceList evidence={evidence} sourceIds={sourceIds} onOpenSource={onOpenSource} />
+                <EvidenceList
+                  evidence={evidence}
+                  sourceIds={sourceIds}
+                  onOpenSource={onOpenSource}
+                />
               </>
             ) : (
               <div className={styles.inspectorEmpty}>
                 <strong>Pilih node atau relasi</strong>
-                <p>Detail dan kutipan sumber yang mendukung relasi akan tampil di sini.</p>
+                <p>
+                  Detail dan kutipan sumber yang mendukung relasi akan tampil di
+                  sini.
+                </p>
               </div>
             )}
             <p className={styles.clusterNote}>
-              Kelompok diturunkan dari konektivitas pada snapshot ini; ini bukan folder proyek.
+              Kelompok diturunkan dari konektivitas pada snapshot ini; ini bukan
+              folder proyek.
             </p>
           </aside>
         ) : null}
       </div>
       <div className={styles.legend} aria-label="Legenda graph">
-        <span><i /> Node adalah entitas tersimpan</span>
-        <span><b /> Panah adalah relasi dengan bukti aktif</span>
+        <span>
+          <i /> Node adalah entitas tersimpan
+        </span>
+        <span>
+          <b /> Panah adalah relasi dengan bukti aktif
+        </span>
         <span>Kelompok: komponen yang saling terhubung</span>
       </div>
     </div>
@@ -486,14 +601,24 @@ function EvidenceList({
           {evidence.slice(0, 6).map((item) => (
             <li key={item.id}>
               <strong>{item.sourceTitle || item.documentName}</strong>
-              <small>v{item.documentVersion}{item.pageNumber ? ` · halaman ${item.pageNumber}` : ""}</small>
+              <small>
+                v{item.documentVersion}
+                {item.pageNumber ? ` · halaman ${item.pageNumber}` : ""}
+              </small>
               <blockquote>{item.quote}</blockquote>
               {item.sourceRef && sourceIds.includes(item.sourceRef) ? (
-                <button type="button" onClick={() => onOpenSource(item.sourceRef!)}>
+                <button
+                  type="button"
+                  onClick={() => onOpenSource(item.sourceRef!)}
+                >
                   Lihat sumber
                 </button>
               ) : item.sourceUrl?.startsWith("https://") ? (
-                <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={item.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Buka sumber rujukan
                 </a>
               ) : null}

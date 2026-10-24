@@ -2,6 +2,11 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  chooseMenuOption,
+  expectMenuValue,
+  menuTrigger,
+} from "./helpers/menu";
 
 const projectId = "f3b16568-80c7-45f7-9f14-1bfda4fc23c8";
 const sourceId = "f77f9efb-8890-4f03-b365-165932946c1f";
@@ -863,9 +868,8 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
   await page.goto("/workspace");
   await openWorkspaceContext(page);
 
-  const thinking = page.getByLabel("Reasoning effort Codex");
-  await thinking.selectOption("auto");
-  await expect(thinking).toHaveValue("auto");
+  await chooseMenuOption(page, "Reasoning effort Codex", "Otomatis");
+  await expectMenuValue(page, "Reasoning effort Codex", "Otomatis");
   const message = page.getByRole("textbox", { name: "Pesan" });
   await message.fill("Jawab singkat dengan Auto.");
   await message.press("Enter");
@@ -884,9 +888,9 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
 
   await page.reload();
   await openWorkspaceContext(page);
-  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("auto");
-  await page.getByLabel("Reasoning effort Codex").selectOption("high");
-  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("high");
+  await expectMenuValue(page, "Reasoning effort Codex", "Otomatis");
+  await chooseMenuOption(page, "Reasoning effort Codex", "Mendalam");
+  await expectMenuValue(page, "Reasoning effort Codex", "Mendalam");
   const followUp = page.getByRole("textbox", { name: "Pesan" });
   await followUp.fill("Jawab singkat dengan effort tinggi.");
   await followUp.press("Enter");
@@ -906,7 +910,7 @@ test("Workspace Auto effort keeps the target fixed and persists Auto and manual 
 
   await page.reload();
   await openWorkspaceContext(page);
-  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("high");
+  await expectMenuValue(page, "Reasoning effort Codex", "Mendalam");
   expect(fixture.unexpectedRequests).toEqual([]);
 });
 
@@ -976,15 +980,19 @@ test("Workspace preserves a saved manual effort when the live catalog drops it",
   await page.goto("/workspace");
   await openWorkspaceContext(page);
 
-  const thinking = page.getByLabel("Reasoning effort Codex");
-  await expect(thinking).toHaveValue("max");
-  await expect(thinking.locator('option[value="max"]')).toHaveText(
+  await expectMenuValue(
+    page,
+    "Reasoning effort Codex",
     "Maksimal · tidak didukung model saat ini",
   );
-  await expect(thinking.locator('option[value="max"]')).toHaveAttribute(
-    "disabled",
-    "",
-  );
+  await menuTrigger(page, "Reasoning effort Codex").click();
+  await expect(
+    page.getByRole("menuitemradio", {
+      name: "Maksimal · tidak didukung model saat ini",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
 
   const message = page.getByRole("textbox", { name: "Pesan" });
   await message.fill("Gunakan pilihan yang tersimpan.");
@@ -1003,7 +1011,11 @@ test("Workspace preserves a saved manual effort when the live catalog drops it",
   });
   await page.reload();
   await openWorkspaceContext(page);
-  await expect(page.getByLabel("Reasoning effort Codex")).toHaveValue("max");
+  await expectMenuValue(
+    page,
+    "Reasoning effort Codex",
+    "Maksimal · tidak didukung model saat ini",
+  );
   expect(fixture.unexpectedRequests).toEqual([]);
 });
 
@@ -1071,6 +1083,11 @@ test("Workspace shows the two source-versioned GraphRAG quotes carried to Codex"
     .fill("Ringkas hubungan modul dari sumber terpilih.");
   await page.getByRole("button", { name: "Kirim pesan", exact: true }).click();
 
+  // Blok "Dioptimasi Senopati" tertutup secara bawaan.
+  await page
+    .locator("summary")
+    .filter({ hasText: "Dioptimasi Senopati" })
+    .click();
   const evidencePanel = page.getByRole("region", {
     name: "Bukti GraphRAG yang disertakan ke Codex",
   });
@@ -1190,6 +1207,12 @@ test("provider failure, empty output, no-op, and an executed candidate stay dist
       exact: true,
     }),
   ).toBeVisible();
+  // Blok "Dioptimasi Senopati" tertutup secara bawaan.
+  await page
+    .locator("summary")
+    .filter({ hasText: "Dioptimasi Senopati" })
+    .last()
+    .click();
   await expect(
     page.getByRole("region", {
       name: "Prompt hasil susunan Senopati yang dikirim ke Codex",

@@ -2,6 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { expectActiveProjectId } from "./helpers/project-picker";
 
 const projectId = "0d5a5412-7abe-4a48-b733-4e41508c9fc0";
 const projectName = "OFFLINE FIXTURE · NOT LIVE TELEMETRY";
@@ -493,7 +494,7 @@ async function openMonitoring(
   await expect(
     page.getByRole("heading", { name: "Monitoring", exact: true }),
   ).toBeVisible();
-  await expect(page.locator("#active-project")).toHaveValue(projectId);
+  await expectActiveProjectId(page, projectId);
   await expect(
     page.getByRole("heading", { name: "Log permintaan model" }),
   ).toBeVisible();

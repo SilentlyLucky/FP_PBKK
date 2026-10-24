@@ -6,7 +6,7 @@
   border-radius: 11px;
   background: var(--surface);
   padding: 16px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+  box-shadow: none;
 }
 
 .header,
@@ -52,12 +52,12 @@
 .pagination > span {
   margin: 4px 0 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .error {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .filters {
@@ -71,7 +71,7 @@
   min-width: 0;
   gap: 5px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
 }
 
@@ -104,7 +104,7 @@
   width: 100%;
   border-collapse: collapse;
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
 }
 
@@ -113,7 +113,7 @@
   background: var(--muted);
   padding: 10px 8px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -138,13 +138,13 @@
 .table td small {
   margin-top: 4px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .mono {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-code);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -155,8 +155,8 @@
   min-height: 44px;
   align-items: center;
   cursor: pointer;
-  color: var(--primary);
-  font-size: 11px;
+  color: var(--accent-text);
+  font-size: 12px;
   font-weight: 550;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -180,12 +180,12 @@
 
 .details dt {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .details dd {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .pagination {
@@ -251,7 +251,7 @@
   .table td::before {
     content: attr(data-label);
     color: var(--muted-foreground);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 550;
   }
 

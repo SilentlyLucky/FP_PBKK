@@ -2,17 +2,17 @@
   display: grid;
   gap: 12px;
   min-width: 0;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
 .staleNotice {
-  border-bottom: 1px solid #f4d89a;
-  background: #fff8e6;
+  border-bottom: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
   padding: 10px 16px;
-  color: #7c4a03;
+  color: var(--warning-text);
   font-size: 12px;
 }
 
@@ -23,7 +23,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
 }
 
 .search {
@@ -33,16 +33,16 @@
   min-height: 44px;
   align-items: center;
   gap: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 0 10px;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .search:focus-within {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgb(37 99 235 / 16%);
+  border-color: var(--primary);
+  box-shadow: none;
 }
 
 .search input {
@@ -50,13 +50,13 @@
   min-width: 0;
   border: 0;
   outline: 0;
-  color: #17233b;
+  color: var(--foreground);
   font: inherit;
   font-size: 13px;
 }
 
 .search input::placeholder {
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .search button,
@@ -69,13 +69,13 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #475569;
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
 .search button:hover,
 .inspectorHeader button:hover {
-  background: #eef2f7;
+  background: var(--raised);
 }
 
 .filters {
@@ -90,11 +90,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 0 12px;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -109,8 +109,8 @@
 .filters > summary:hover,
 .filters[open] > summary,
 .inspectorToggle:hover {
-  border-color: #93b4ee;
-  background: #f8fbff;
+  border-color: var(--accent-border);
+  background: var(--surface-muted);
 }
 
 .filterMenu {
@@ -121,11 +121,11 @@
   display: grid;
   min-width: 180px;
   gap: 2px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   padding: 6px;
-  box-shadow: 0 12px 28px rgb(15 23 42 / 12%);
+  box-shadow: var(--shadow-float);
 }
 
 .filterMenu label {
@@ -135,31 +135,31 @@
   gap: 8px;
   border-radius: 6px;
   padding: 0 8px;
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
   cursor: pointer;
 }
 
 .filterMenu label:hover {
-  background: #f1f5f9;
+  background: var(--surface-muted);
 }
 
 .filterMenu input {
   width: 16px;
   height: 16px;
-  accent-color: #2563eb;
+  accent-color: var(--primary);
 }
 
 .graphCount {
   margin-left: auto;
-  color: #64748b;
-  font-size: 11px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .graphWorkspace {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 0;
 }
 
@@ -172,10 +172,79 @@
   width: 100%;
   min-width: 0;
   height: min(70vh, 680px);
-  min-height: 460px;
-  background-color: #fbfcfe;
-  background-image: linear-gradient(#f8fafc 1px, transparent 1px), linear-gradient(90deg, #f8fafc 1px, transparent 1px);
-  background-size: 24px 24px;
+  min-height: 420px;
+  background-color: var(--canvas);
+  /* Variabel React Flow dipetakan ke token tema. */
+  --xy-background-color: var(--canvas);
+  --xy-edge-label-background-color: var(--surface);
+  --xy-edge-label-color: var(--muted-foreground);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--raised);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-minimap-background-color: var(--surface);
+  --xy-attribution-background-color: transparent;
+}
+
+@media (max-width: 767px) {
+  .canvas {
+    min-height: 360px;
+  }
+}
+
+.legend {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--graph-concept);
+}
+
+.legend li[data-kind="formula"] i,
+.entityNode[data-kind="formula"] {
+  --kind: var(--graph-formula);
+}
+
+.legend li[data-kind="example"] i,
+.entityNode[data-kind="example"] {
+  --kind: var(--graph-example);
+}
+
+.legend li[data-kind="document"] i,
+.entityNode[data-kind="document"] {
+  --kind: var(--graph-document);
+}
+
+.legend li[data-kind="formula"] i {
+  background: var(--graph-formula);
+}
+
+.legend li[data-kind="example"] i {
+  background: var(--graph-example);
+}
+
+.legend li[data-kind="document"] i {
+  border: 1px solid var(--border-strong);
+  background: var(--graph-document);
 }
 
 .canvas :global(.react-flow) {
@@ -188,43 +257,45 @@
 
 .canvas :global(.react-flow__controls) {
   overflow: hidden;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 9px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .canvas :global(.react-flow__controls-button) {
   width: 40px;
   height: 40px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
-  color: #334155;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
 }
 
 .canvas :global(.react-flow__controls-button:hover) {
-  background: #eff6ff;
+  background: var(--accent-soft);
 }
 
 .canvas :global(.react-flow__minimap) {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .entityNode {
+  --kind: var(--graph-concept);
   position: relative;
   display: grid;
   width: 152px;
   min-height: 60px;
   align-content: center;
   gap: 4px;
-  border: 1px solid #b8cff2;
-  border-radius: 12px;
-  background: #eff6ff;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--kind);
+  border-radius: 10px;
+  background: var(--surface);
   padding: 8px 10px;
-  box-shadow: 0 2px 8px rgb(37 99 235 / 8%);
-  color: #17233b;
+  box-shadow: none;
+  color: var(--foreground);
   text-align: center;
 }
 
@@ -238,23 +309,22 @@
 
 .entityNode span {
   overflow: hidden;
-  color: #475569;
-  font-size: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .entityNodeSelected {
-  border-color: #2563eb;
-  background: #dbeafe;
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 18%), 0 5px 16px rgb(37 99 235 / 14%);
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
 }
 
 .handle {
   width: 7px;
   height: 7px;
   border: 0;
-  background: #64748b;
+  background: var(--border-strong);
   opacity: 0;
 }
 
@@ -265,8 +335,8 @@
   flex-direction: column;
   gap: 16px;
   overflow: auto;
-  border-left: 1px solid #e2e8f0;
-  background: #fff;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
   padding: 16px;
 }
 
@@ -278,15 +348,14 @@
 }
 
 .inspectorHeader span {
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .inspectorHeader h3 {
   margin: 5px 0 0;
-  color: #17233b;
+  color: var(--foreground);
   font-size: 15px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -296,7 +365,7 @@
   display: grid;
   gap: 0;
   margin: 0;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
 }
 
 .nodeFacts > div {
@@ -305,8 +374,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid #eef2f7;
-  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
 }
 
 .nodeFacts dt,
@@ -315,18 +384,18 @@
 }
 
 .nodeFacts dt {
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .nodeFacts dd {
-  color: #17233b;
+  color: var(--foreground);
   font-weight: 650;
   text-align: right;
 }
 
 .inspectorSection h4 {
   margin: 0 0 8px;
-  color: #17233b;
+  color: var(--foreground);
   font-size: 12px;
 }
 
@@ -344,51 +413,51 @@
   width: 100%;
   min-height: 44px;
   gap: 4px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 8px;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
 }
 
 .relatedList button:hover {
-  border-color: #93b4ee;
-  background: #f8fbff;
+  border-color: var(--accent-border);
+  background: var(--surface-muted);
 }
 
 .relatedList em {
-  color: #64748b;
+  color: var(--muted-foreground);
   font-style: normal;
 }
 
 .relatedList small,
 .evidenceList small {
-  color: #64748b;
-  font-size: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .evidenceList li {
   display: grid;
   gap: 5px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
 }
 
 .evidenceList strong {
-  color: #17233b;
-  font-size: 11px;
+  color: var(--foreground);
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .evidenceList blockquote {
   margin: 2px 0;
-  color: #475569;
-  font-size: 11px;
+  color: var(--muted-foreground);
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -397,18 +466,18 @@
   justify-self: start;
   border: 0;
   border-radius: 6px;
-  background: #eff6ff;
+  background: var(--accent-soft);
   padding: 0 10px;
-  color: #1d4ed8;
+  color: var(--accent-text);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
 .statement {
   margin: 0;
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -417,21 +486,21 @@
   display: grid;
   gap: 6px;
   padding: 8px 0;
-  color: #17233b;
+  color: var(--foreground);
   font-size: 12px;
 }
 
 .inspectorEmpty p,
 .clusterNote {
   margin: 0;
-  color: #64748b;
-  font-size: 11px;
+  color: var(--muted-foreground);
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .clusterNote {
   margin-top: auto;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
@@ -439,10 +508,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px 20px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid var(--border);
   padding: 0 16px 12px;
-  color: #64748b;
-  font-size: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .legend span {
@@ -457,8 +526,8 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #dbeafe;
-  border: 1px solid #93b4ee;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
 }
 
 .legend b {
@@ -466,7 +535,7 @@
   height: 2px;
   border: 0;
   border-radius: 0;
-  background: #94a3b8;
+  background: var(--border-strong);
 }
 
 .graphEmpty {
@@ -475,9 +544,9 @@
   align-content: center;
   justify-items: center;
   gap: 10px;
-  border: 1px dashed #cbd5e1;
+  border: 1px dashed var(--border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
   padding: 32px;
   text-align: center;
 }
@@ -486,9 +555,9 @@
   min-height: 42px;
   border: 0;
   border-radius: 8px;
-  background: #2563eb;
+  background: var(--primary);
   padding: 0 14px;
-  color: #fff;
+  color: var(--primary-foreground);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -496,11 +565,11 @@
 }
 
 .emptyAction:hover {
-  background: #1d4ed8;
+  background: var(--primary);
 }
 
 .emptyAction:focus-visible {
-  outline: 2px solid #1d4ed8;
+  outline: 2px solid var(--primary);
   outline-offset: 3px;
 }
 
@@ -509,23 +578,22 @@
   width: 48px;
   height: 48px;
   place-items: center;
-  border-radius: 14px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: transparent;
+  color: var(--muted-foreground);
   font-size: 19px;
   font-weight: 750;
 }
 
 .graphEmpty h3 {
   margin: 0;
-  color: #17233b;
+  color: var(--foreground);
   font-size: 18px;
 }
 
 .graphEmpty p {
   max-width: 420px;
   margin: 0;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -533,7 +601,7 @@
 .graphShell :global(button:focus-visible),
 .graphShell :global(summary:focus-visible),
 .graphShell :global(input:focus-visible) {
-  outline: 2px solid #1d4ed8;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
@@ -544,7 +612,7 @@
 
   .inspector {
     max-height: none;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--border);
     border-left: 0;
   }
 

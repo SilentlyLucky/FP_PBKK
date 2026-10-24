@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Lock } from "lucide-react";
 import Link from "next/link";
 import type {
   ControlledArm,
@@ -257,147 +258,155 @@ export function ControlledEvaluationSetup({
   return (
     <form className={styles.setup} onSubmit={submit}>
       <div className={styles.formGrid}>
-        <div className="field">
-          <label htmlFor="controlled-dataset-name">Nama dataset</label>
-          <input
-            id="controlled-dataset-name"
-            className="input"
-            maxLength={120}
-            value={datasetName}
-            onChange={(event) => setDatasetName(event.target.value)}
-            required
-            disabled={starting}
-          />
+        <div className={styles.step}>
+          <div className="field">
+            <label htmlFor="controlled-dataset-name">Nama dataset</label>
+            <input
+              id="controlled-dataset-name"
+              className="input"
+              maxLength={120}
+              value={datasetName}
+              onChange={(event) => setDatasetName(event.target.value)}
+              required
+              disabled={starting}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="controlled-dataset-version">Versi dataset</label>
+            <input
+              id="controlled-dataset-version"
+              className="input"
+              maxLength={80}
+              value={datasetVersion}
+              onChange={(event) => setDatasetVersion(event.target.value)}
+              required
+              disabled={starting}
+            />
+          </div>
         </div>
-        <div className="field">
-          <label htmlFor="controlled-dataset-version">Versi dataset</label>
-          <input
-            id="controlled-dataset-version"
-            className="input"
-            maxLength={80}
-            value={datasetVersion}
-            onChange={(event) => setDatasetVersion(event.target.value)}
-            required
-            disabled={starting}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="controlled-prompt">Prompt yang diuji</label>
-          <select
-            id="controlled-prompt"
-            className="select"
-            value={promptId}
-            onChange={(event) => {
-              setPromptId(event.target.value);
-              setVersions([]);
-              setBaselineVersionId("");
-              setCandidateVersionId("");
-              setVersionsLoading(false);
-              setVersionsError(null);
-            }}
-            disabled={!prompts.length || starting}
-            required
-          >
-            <option value="">Pilih prompt tersimpan</option>
-            {prompts.map((prompt) => (
-              <option key={prompt.id} value={prompt.id}>
-                {prompt.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="controlled-baseline-version">
-            Versi baseline tersimpan
-          </label>
-          <select
-            id="controlled-baseline-version"
-            className="select"
-            value={baselineVersionId}
-            onChange={(event) => setBaselineVersionId(event.target.value)}
-            disabled={!versions.length || starting}
-            required
-          >
-            <option value="">Pilih versi baseline</option>
-            {versions.map((version) => (
-              <option key={version.id} value={version.id}>
-                v{version.version} ·{" "}
-                {version.version === newestVersion ? "terbaru" : "riwayat"}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="controlled-candidate-version">
-            Versi kandidat tersimpan
-          </label>
-          <select
-            id="controlled-candidate-version"
-            className="select"
-            value={candidateVersionId}
-            onChange={(event) => setCandidateVersionId(event.target.value)}
-            disabled={!versions.length || starting}
-            required
-          >
-            <option value="">Pilih versi kandidat</option>
-            {versions.map((version) => (
-              <option key={version.id} value={version.id}>
-                v{version.version} ·{" "}
-                {version.version === newestVersion ? "terbaru" : "riwayat"}
-              </option>
-            ))}
-          </select>
-          <p className="helper">
-            Kedua versi harus berasal dari prompt yang sama dan teksnya harus
-            berbeda. Pilihan ini dibekukan pada run.
-          </p>
-        </div>
-        <div className="field">
-          <label htmlFor="controlled-model">Model Codex</label>
-          <select
-            id="controlled-model"
-            className="select"
-            value={selectedModelId}
-            onChange={(event) => onModelChange(event.target.value)}
-            disabled={!models.length || starting}
-            required
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.displayName}
-              </option>
-            ))}
-            {!models.length ? (
-              <option value="">Muat model dari Pengaturan</option>
-            ) : null}
-          </select>
-          {!modelVerified ? (
-            <p className="helper" role="status">
-              Model ini perlu diverifikasi sebelum evaluasi dapat dimulai.{" "}
-              <Link className="knowledge-link" href="/settings">
-                Buka Pengaturan
-              </Link>
+        <div className={styles.step}>
+          <div className="field">
+            <label htmlFor="controlled-prompt">Prompt yang diuji</label>
+            <select
+              id="controlled-prompt"
+              className="select"
+              value={promptId}
+              onChange={(event) => {
+                setPromptId(event.target.value);
+                setVersions([]);
+                setBaselineVersionId("");
+                setCandidateVersionId("");
+                setVersionsLoading(false);
+                setVersionsError(null);
+              }}
+              disabled={!prompts.length || starting}
+              required
+            >
+              <option value="">Pilih prompt tersimpan</option>
+              {prompts.map((prompt) => (
+                <option key={prompt.id} value={prompt.id}>
+                  {prompt.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="controlled-baseline-version">
+              Versi baseline tersimpan
+            </label>
+            <select
+              id="controlled-baseline-version"
+              className="select"
+              value={baselineVersionId}
+              onChange={(event) => setBaselineVersionId(event.target.value)}
+              disabled={!versions.length || starting}
+              required
+            >
+              <option value="">Pilih versi baseline</option>
+              {versions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  v{version.version} ·{" "}
+                  {version.version === newestVersion ? "terbaru" : "riwayat"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="controlled-candidate-version">
+              Versi kandidat tersimpan
+            </label>
+            <select
+              id="controlled-candidate-version"
+              className="select"
+              value={candidateVersionId}
+              onChange={(event) => setCandidateVersionId(event.target.value)}
+              disabled={!versions.length || starting}
+              required
+            >
+              <option value="">Pilih versi kandidat</option>
+              {versions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  v{version.version} ·{" "}
+                  {version.version === newestVersion ? "terbaru" : "riwayat"}
+                </option>
+              ))}
+            </select>
+            <p className="helper">
+              Kedua versi harus berasal dari prompt yang sama dan teksnya harus
+              berbeda. Pilihan ini dibekukan pada run.
             </p>
-          ) : null}
+          </div>
         </div>
-        <div className="field">
-          <label htmlFor="controlled-reasoning-effort">
-            Kedalaman berpikir
-          </label>
-          <select
-            id="controlled-reasoning-effort"
-            className="select"
-            value={reasoningEffort}
-            onChange={(event) => onReasoningEffortChange(event.target.value)}
-            disabled={!selectedModel || starting}
-          >
-            <option value="">Bawaan model</option>
-            {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
-              <option key={effort} value={effort}>
-                {effort}
-              </option>
-            ))}
-          </select>
+        <div className={styles.step}>
+          <div className="field">
+            <label htmlFor="controlled-model">Model Codex</label>
+            <select
+              id="controlled-model"
+              className="select"
+              value={selectedModelId}
+              onChange={(event) => onModelChange(event.target.value)}
+              disabled={!models.length || starting}
+              required
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName}
+                </option>
+              ))}
+              {!models.length ? (
+                <option value="">Muat model dari Pengaturan</option>
+              ) : null}
+            </select>
+            {!modelVerified ? (
+              <p className="helper" role="status">
+                Model ini perlu diverifikasi sebelum evaluasi dapat dimulai.{" "}
+                <Link className="knowledge-link" href="/settings">
+                  Buka Pengaturan
+                </Link>
+              </p>
+            ) : null}
+          </div>
+          <div className="field">
+            <label htmlFor="controlled-reasoning-effort">
+              Kedalaman berpikir
+            </label>
+            <select
+              id="controlled-reasoning-effort"
+              className="select"
+              value={reasoningEffort}
+              onChange={(event) => onReasoningEffortChange(event.target.value)}
+              disabled={!selectedModel || starting}
+            >
+              <option value="">Bawaan model</option>
+              {(selectedModel?.supportedReasoningEfforts ?? []).map(
+                (effort) => (
+                  <option key={effort} value={effort}>
+                    {effort}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -417,6 +426,7 @@ export function ControlledEvaluationSetup({
         <ul className={styles.armOptions} aria-label="Metode yang dibandingkan">
           {requiredArms.map((arm) => (
             <li key={arm.id}>
+              <Lock aria-hidden="true" size={14} />
               <span>
                 <strong>{arm.label}</strong>
                 <small>
@@ -504,7 +514,7 @@ export function ControlledEvaluationSetup({
       </div>
 
       {formBlocker ? (
-        <p className="helper" role="status">
+        <p className={`helper ${styles.blocker}`} role="status">
           {formBlocker}
         </p>
       ) : null}

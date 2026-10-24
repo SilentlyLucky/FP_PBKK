@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { expectActiveProjectId } from "./helpers/project-picker";
 
 const projectId = "4fd7a8a8-1875-4a83-9c01-4d33b607779c";
 const sourceId = "8c6cecca-6a08-4738-93ac-6102b62bcf8d";
@@ -438,7 +439,7 @@ test("Sumber searches, previews, removes, reads, selects, and imports through AP
   );
 
   await page.goto("/sources");
-  await expect(page.locator("#active-project")).toHaveValue(projectId);
+  await expectActiveProjectId(page, projectId);
   await expect(
     page.getByRole("heading", { level: 1, name: "Sumber" }),
   ).toBeVisible();
@@ -654,7 +655,8 @@ test("Sumber searches, previews, removes, reads, selects, and imports through AP
       (button) => getComputedStyle(button).backgroundColor,
     ),
   ]);
-  expect(addSourceBackground).toBe("rgb(37, 99, 235)");
+  // Warna aksen terang (--primary) pada tema Warm Slate.
+  expect(addSourceBackground).toBe("rgb(180, 83, 47)");
   expect(saveSourceBackground).toBe(addSourceBackground);
 
   await page.locator("#knowledge-source-search").fill("missing");
@@ -810,7 +812,7 @@ test("Sumber and Pengaturan explain disconnected local folders and database", as
   );
 
   await page.goto("/sources");
-  await expect(page.locator("#active-project")).toHaveValue(projectId);
+  await expectActiveProjectId(page, projectId);
   await page.locator("#knowledge-advanced-tools > summary").click();
   await page
     .locator("#knowledge-advanced-tools details")

@@ -8,7 +8,6 @@ export default function RunsPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Observability"
         title="Runs"
         description="Status backend, timeline event, provider/model, dan usage yang dilaporkan. Event dapat direplay berdasarkan sequence tanpa menggandakan data."
         action={

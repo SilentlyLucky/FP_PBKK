@@ -2,6 +2,10 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { expect, test, type Route } from "@playwright/test";
+import {
+  expectActiveProjectId,
+  projectPickerLabel,
+} from "./helpers/project-picker";
 
 const projectId = "0d5a5412-7abe-4a48-b733-4e41508c9fc0";
 const runId = "2d5a5412-7abe-4a48-b733-4e41508c9fc0";
@@ -253,9 +257,8 @@ test("shows actual run actions and tools with safe keyboard disclosures", async 
   });
 
   await page.goto(`/runs?run=${runId}`);
-  const projectPicker = page.getByLabel("Proyek", { exact: true });
-  await expect(projectPicker).toHaveValue(projectId);
-  await expect(projectPicker.locator("option:checked")).toHaveText(
+  await expectActiveProjectId(page, projectId);
+  expect(await projectPickerLabel(page)).toBe(
     "OFFLINE FIXTURE · NOT LIVE TELEMETRY",
   );
   await expect(

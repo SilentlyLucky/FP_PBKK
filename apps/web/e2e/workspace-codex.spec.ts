@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { selectProjectById } from "./helpers/project-picker";
 
 const projectId = "project-codex-qa";
 const promptId = "prompt-codex-qa";
@@ -851,7 +852,7 @@ test("Workspace streams optimized answers without leaking state across runs or p
     secondResultPanel.getByText("MOCK_FAILURE", { exact: true }),
   ).toBeVisible();
 
-  await page.locator("#active-project").selectOption(inlineProjectB);
+  await selectProjectById(page, inlineProjectB);
   await expect(page.getByRole("region", { name: "Jawaban Codex" })).toHaveCount(
     0,
   );

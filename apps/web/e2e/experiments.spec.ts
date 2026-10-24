@@ -1,4 +1,5 @@
 import { expect, test, type Route } from "@playwright/test";
+import { expectActiveProjectId } from "./helpers/project-picker";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 const promptId = "22222222-2222-4222-8222-222222222222";
@@ -263,13 +264,8 @@ test("Experiments runs a frozen paired pilot and records a user decision", async
   await expect(
     page.getByRole("heading", { level: 1, name: "Pengujian" }),
   ).toBeVisible();
-  await page
-    .getByRole("radio", { name: /Pilot eksploratif/ })
-    .check();
-  const projectPicker = page.getByRole("combobox", {
-    name: "Proyek",
-  });
-  await expect(projectPicker).toHaveValue(projectId);
+  await page.getByRole("radio", { name: /Pilot eksploratif/ }).check();
+  await expectActiveProjectId(page, projectId);
   await page.getByLabel("Prompt baseline").selectOption(promptId);
   const promptVersionPicker = page.getByLabel("Versi prompt");
   await expect(promptVersionPicker).toBeEnabled();

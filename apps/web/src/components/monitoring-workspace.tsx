@@ -212,7 +212,11 @@ function MetricCard({
         </span>
         <span>{label}</span>
       </div>
-      <strong className={styles.metricValue}>{value}</strong>
+      <strong
+        className={`${styles.metricValue}${value === "Tidak tersedia" ? " " + styles.metricUnavailable : ""}`}
+      >
+        {value}
+      </strong>
       <span className={styles.metricDetail}>{detail}</span>
     </article>
   );

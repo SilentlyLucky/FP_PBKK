@@ -5,7 +5,6 @@ export default function MonitoringPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Observabilitas lokal"
         title="Monitoring"
         description="Pantau run yang tersimpan, event langsung, kesiapan provider, dan usage yang benar-benar dilaporkan."
       />

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, ChevronDown, Copy } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -16,6 +17,73 @@ import { WorkspaceMessage } from "@/components/workspace-message";
 import { describeRunActivity, type RunActivityEvent } from "@/lib/run-activity";
 import { formatAssistantTextForDisplay } from "@/lib/workspace-message-content";
 import styles from "./workspace-run-result.module.css";
+
+function OptimizationMark() {
+  return (
+    <svg
+      className={styles.optimizedMark}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    >
+      <path d="M12 5.5 6 17M12 5.5 18 17M7.5 18h9" />
+      <circle cx="12" cy="5" r="2.6" fill="currentColor" stroke="none" />
+      <circle cx="5.5" cy="18" r="2.6" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="18" r="2.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function PendingDots() {
+  return (
+    <span className={styles.dots} aria-hidden="true">
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+function CopyAnswerButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={styles.copyButton}
+      aria-label="Salin jawaban"
+      title="Salin jawaban"
+      onClick={() => void copy()}
+    >
+      {copied ? (
+        <Check aria-hidden="true" size={15} />
+      ) : (
+        <Copy aria-hidden="true" size={15} />
+      )}
+      {copied ? <span role="status">Tersalin</span> : null}
+    </button>
+  );
+}
+
+const retrievalStrategyLabels: Record<string, string> = {
+  graph: "GraphRAG",
+  lexical: "Leksikal",
+  hybrid: "Hybrid",
+  full_context: "Konteks sumber penuh",
+};
 
 interface RunEvent extends RunActivityEvent {
   sequence: number;
@@ -572,6 +640,22 @@ export function WorkspaceRunResult({
       ? "Klarifikasi Senopati"
       : "Jawaban Codex";
 
+  const retrievalEvidenceShown = Boolean(
+    current.retrievalEvidenceStatus &&
+    current.retrievalEvidenceStatus !== "not_requested",
+  );
+  const optimizationSummary = [
+    current.effectiveRetrievalStrategy
+      ? (retrievalStrategyLabels[current.effectiveRetrievalStrategy] ??
+        current.effectiveRetrievalStrategy)
+      : null,
+    current.retrievalEvidenceStatus === "evidence_included"
+      ? `${current.retrievalEvidence.length} kutipan`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   if (chatPresentation) {
     return (
       <section
@@ -595,6 +679,123 @@ export function WorkspaceRunResult({
               : label}
           </span>
         </div>
+        {current.workspaceChatOutcome === "no_change_recommended" ? (
+          <p className="helper" role="status">
+            Senopati menilai prompt sudah memadai; prompt asli otomatis dikirim
+            ke Codex. Prompt ini belum dinilai pada contoh uji.
+          </p>
+        ) : null}
+
+        {current.optimizationEvidenceStatus === "rewrite_unscored" ? (
+          <p className="helper" role="status">
+            Prompt ini disusun ulang oleh Senopati dan dikirim ke Codex apa
+            adanya. Belum ada penilaian pada contoh uji.
+          </p>
+        ) : null}
+
+        {current.recommendation || retrievalEvidenceShown ? (
+          <details className={styles.optimized}>
+            <summary>
+              <OptimizationMark />
+              <b>Dioptimasi Senopati</b>
+              {optimizationSummary ? (
+                <span className={styles.optimizedMeta}>
+                  {optimizationSummary}
+                </span>
+              ) : null}
+              <ChevronDown
+                className={styles.optimizedChevron}
+                aria-hidden="true"
+                size={15}
+              />
+            </summary>
+            <div className={styles.optimizedBody}>
+              {current.recommendation ? (
+                <section
+                  className={styles.chatRecommendation}
+                  aria-label="Prompt hasil susunan Senopati yang dikirim ke Codex"
+                >
+                  <div>
+                    <strong>
+                      Prompt hasil susunan Senopati · dikirim ke Codex
+                    </strong>
+                    <p>{current.recommendation.changeSummary}</p>
+                    <p>Risiko: {current.recommendation.riskSummary}</p>
+                  </div>
+                  <pre>{current.recommendation.text}</pre>
+                </section>
+              ) : null}
+
+              {current.retrievalEvidenceStatus &&
+              current.retrievalEvidenceStatus !== "not_requested" ? (
+                <section
+                  className={styles.chatGraphEvidence}
+                  aria-label={
+                    current.effectiveRetrievalStrategy === "graph"
+                      ? "Bukti GraphRAG yang disertakan ke Codex"
+                      : "Bukti sumber yang disertakan ke Codex"
+                  }
+                >
+                  <div>
+                    <strong>
+                      {current.effectiveRetrievalStrategy === "graph"
+                        ? "Bukti GraphRAG yang disertakan ke Codex"
+                        : "Bukti sumber yang disertakan ke Codex"}
+                    </strong>
+                    <p>
+                      Diminta {current.retrievalStrategy ?? "tidak tersedia"}
+                      {current.effectiveRetrievalStrategy
+                        ? ` · dipakai ${current.effectiveRetrievalStrategy}`
+                        : " · rute aktual tidak tersedia"}
+                      {current.retrievalReason
+                        ? ` · ${retrievalReasonLabel(current.retrievalReason)}`
+                        : ""}
+                      {current.graphSnapshotId
+                        ? ` · Snapshot ${current.graphSnapshotId}`
+                        : ""}
+                      {current.retrievalEvidenceStatus === "evidence_included"
+                        ? ` · ${current.retrievalEvidence.length} kutipan sumber digunakan`
+                        : current.retrievalEvidenceStatus ===
+                            "no_evidence_found"
+                          ? " · tidak ada kutipan yang cocok"
+                          : current.retrievalEvidenceStatus ===
+                              "retrieval_not_run"
+                            ? " · pencarian belum dijalankan"
+                            : " · bukti tidak tersedia"}
+                    </p>
+                  </div>
+                  {current.retrievalTraceIds.length ? (
+                    <p>Trace: {current.retrievalTraceIds.join(", ")}</p>
+                  ) : null}
+                  {current.retrievalEvidence.length ? (
+                    <ul>
+                      {current.retrievalEvidence.map((evidence) => (
+                        <li key={evidence.evidenceId}>
+                          <div className={styles.chatGraphEvidenceSource}>
+                            <strong>{evidence.documentName}</strong>
+                            <span>
+                              {evidence.kind === "graph" ? "GraphRAG" : "RAG"} ·
+                              Izin berbagi terverifikasi · Versi{" "}
+                              {evidence.documentVersion} ·{" "}
+                              {evidence.documentVersionId}
+                            </span>
+                            <span>Checksum {evidence.sourceChecksum}</span>
+                            {evidence.chunkId ? (
+                              <span>Chunk {evidence.chunkId}</span>
+                            ) : null}
+                            <span>Trace {evidence.traceId}</span>
+                          </div>
+                          <blockquote>{evidence.quote}</blockquote>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+
         {current.completed && displayAnswer ? (
           current.text ? (
             <WorkspaceMessage
@@ -642,6 +843,7 @@ export function WorkspaceRunResult({
             aria-live="polite"
           >
             Menunggu giliran…
+            <PendingDots />
           </p>
         ) : (
           <p
@@ -650,106 +852,15 @@ export function WorkspaceRunResult({
             aria-live="polite"
           >
             Sedang menyiapkan jawaban…
+            <PendingDots />
           </p>
         )}
-
-        {current.workspaceChatOutcome === "no_change_recommended" ? (
-          <p className="helper" role="status">
-            Senopati menilai prompt sudah memadai; prompt asli otomatis dikirim
-            ke Codex. Prompt ini belum dinilai pada contoh uji.
-          </p>
-        ) : null}
-
-        {current.optimizationEvidenceStatus === "rewrite_unscored" ? (
-          <p className="helper" role="status">
-            Prompt ini disusun ulang oleh Senopati dan dikirim ke Codex apa
-            adanya. Belum ada penilaian pada contoh uji.
-          </p>
-        ) : null}
 
         {latestWork && !terminal ? (
           <div className={styles.chatActionSummary}>
             <strong>{latestWork.title}</strong>
             <p>{latestWork.summary}</p>
           </div>
-        ) : null}
-
-        {current.recommendation ? (
-          <section
-            className={styles.chatRecommendation}
-            aria-label="Prompt hasil susunan Senopati yang dikirim ke Codex"
-          >
-            <div>
-              <strong>Prompt hasil susunan Senopati · dikirim ke Codex</strong>
-              <p>{current.recommendation.changeSummary}</p>
-              <p>Risiko: {current.recommendation.riskSummary}</p>
-            </div>
-            <pre>{current.recommendation.text}</pre>
-          </section>
-        ) : null}
-
-        {current.retrievalEvidenceStatus &&
-        current.retrievalEvidenceStatus !== "not_requested" ? (
-          <section
-            className={styles.chatGraphEvidence}
-            aria-label={
-              current.effectiveRetrievalStrategy === "graph"
-                ? "Bukti GraphRAG yang disertakan ke Codex"
-                : "Bukti sumber yang disertakan ke Codex"
-            }
-          >
-            <div>
-              <strong>
-                {current.effectiveRetrievalStrategy === "graph"
-                  ? "Bukti GraphRAG yang disertakan ke Codex"
-                  : "Bukti sumber yang disertakan ke Codex"}
-              </strong>
-              <p>
-                Diminta {current.retrievalStrategy ?? "tidak tersedia"}
-                {current.effectiveRetrievalStrategy
-                  ? ` · dipakai ${current.effectiveRetrievalStrategy}`
-                  : " · rute aktual tidak tersedia"}
-                {current.retrievalReason
-                  ? ` · ${retrievalReasonLabel(current.retrievalReason)}`
-                  : ""}
-                {current.graphSnapshotId
-                  ? ` · Snapshot ${current.graphSnapshotId}`
-                  : ""}
-                {current.retrievalEvidenceStatus === "evidence_included"
-                  ? ` · ${current.retrievalEvidence.length} kutipan sumber digunakan`
-                  : current.retrievalEvidenceStatus === "no_evidence_found"
-                    ? " · tidak ada kutipan yang cocok"
-                    : current.retrievalEvidenceStatus === "retrieval_not_run"
-                      ? " · pencarian belum dijalankan"
-                      : " · bukti tidak tersedia"}
-              </p>
-            </div>
-            {current.retrievalTraceIds.length ? (
-              <p>Trace: {current.retrievalTraceIds.join(", ")}</p>
-            ) : null}
-            {current.retrievalEvidence.length ? (
-              <ul>
-                {current.retrievalEvidence.map((evidence) => (
-                  <li key={evidence.evidenceId}>
-                    <div className={styles.chatGraphEvidenceSource}>
-                      <strong>{evidence.documentName}</strong>
-                      <span>
-                        {evidence.kind === "graph" ? "GraphRAG" : "RAG"} · Izin
-                        berbagi terverifikasi · Versi {evidence.documentVersion}{" "}
-                        · {evidence.documentVersionId}
-                      </span>
-                      <span>Checksum {evidence.sourceChecksum}</span>
-                      {evidence.chunkId ? (
-                        <span>Chunk {evidence.chunkId}</span>
-                      ) : null}
-                      <span>Trace {evidence.traceId}</span>
-                    </div>
-                    <blockquote>{evidence.quote}</blockquote>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </section>
         ) : null}
 
         {current.activityEvents.length || current.errorCode ? (
@@ -775,6 +886,9 @@ export function WorkspaceRunResult({
         ) : null}
 
         <div className={styles.chatAnswerActions}>
+          {current.completed && displayAnswer && current.text ? (
+            <CopyAnswerButton text={current.text} />
+          ) : null}
           <Link
             className="workspace-result-link"
             href={`/runs?run=${encodeURIComponent(runId)}`}

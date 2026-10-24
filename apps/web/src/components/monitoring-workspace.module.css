@@ -34,7 +34,7 @@
 
 .projectStatus svg {
   flex: none;
-  color: var(--primary);
+  color: var(--accent-text);
 }
 
 .refreshControl {
@@ -48,7 +48,7 @@
   align-items: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .rangeControl {
@@ -85,7 +85,7 @@
   border: 1px solid var(--border);
   border-radius: 11px;
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+  box-shadow: none;
 }
 
 .metricCard {
@@ -110,10 +110,10 @@
   height: 32px;
   flex: none;
   place-items: center;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--accent-border);
   border-radius: 9px;
-  background: #eff6ff;
-  color: var(--primary);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .metricValue {
@@ -128,7 +128,7 @@
 
 .metricDetail {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -220,14 +220,14 @@
 .providerReason,
 .panelFootnote,
 .emptyCopy {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .providerMeta {
   flex-wrap: wrap;
   gap: 7px 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .providerReason,
@@ -263,7 +263,7 @@
 
 .usageFacts dt {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .usageFacts dd {
@@ -277,7 +277,7 @@
 
 .usageFacts small {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -308,7 +308,7 @@
 
 .runtimeFacts small {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -322,7 +322,7 @@
   min-height: 44px;
   align-items: center;
   cursor: pointer;
-  color: var(--primary);
+  color: var(--accent-text);
   font-size: 12px;
   font-weight: 600;
   text-decoration: underline;
@@ -358,13 +358,13 @@
 }
 
 .distributionList strong {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .distributionList span {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -428,7 +428,7 @@
 
 .inlineError {
   margin: 0;
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 12px;
 }
 
@@ -445,7 +445,7 @@
 
 .emptyState > svg {
   flex: none;
-  color: var(--primary);
+  color: var(--accent-text);
 }
 
 @media (max-width: 1050px) {
@@ -498,4 +498,61 @@
   .metricCard {
     min-height: 108px;
   }
+}
+
+/* ---------- Warm Slate: KPI tanpa kotak ikon, nilai berfont kode ---------- */
+.metricIcon,
+.panelIcon {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.metricCard {
+  min-height: 0;
+  border-radius: 14px;
+}
+
+.metricHeading {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.metricValue {
+  font-family: var(--font-code);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.metricValue.metricUnavailable {
+  color: var(--muted-foreground);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.metricDetail {
+  font-size: 12.5px;
+}
+
+.panel {
+  border-radius: 14px;
+}
+
+.projectStatus svg {
+  color: var(--muted-foreground);
+}
+
+.diagnosticDetails summary {
+  color: var(--accent-text);
+}
+
+.rangeControl select {
+  border-color: var(--control-boundary);
+  border-radius: 10px;
 }

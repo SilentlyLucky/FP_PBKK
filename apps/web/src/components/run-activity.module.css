@@ -23,7 +23,7 @@
   place-items: center;
   color: var(--muted-foreground);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -53,7 +53,7 @@
   border-radius: 999px;
   padding: 2px 6px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -68,7 +68,7 @@
   padding: 2px 4px;
   color: var(--muted-foreground);
   font-family: var(--font-code);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .summary {
@@ -85,7 +85,7 @@
   min-width: 0;
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -93,7 +93,7 @@
 .details {
   min-width: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .details > summary {
@@ -101,7 +101,7 @@
   min-height: 44px;
   width: fit-content;
   align-items: center;
-  color: var(--primary);
+  color: var(--accent-text);
   cursor: pointer;
   font-weight: 550;
 }

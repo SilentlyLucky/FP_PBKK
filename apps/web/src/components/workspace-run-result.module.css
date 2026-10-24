@@ -10,63 +10,164 @@
 .chatAnswer {
   display: grid;
   min-width: 0;
+  max-width: 720px;
   gap: 14px;
-  padding: 4px 0 8px;
+  padding: 0 0 8px;
 }
 
 .chatAnswerHeading {
   display: flex;
-  min-height: 32px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .chatAnswerHeading strong {
   color: var(--foreground);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .chatAnswerContent {
-  max-width: 82ch;
+  max-width: 720px;
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 .chatAnswerPending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   color: var(--muted-foreground);
   font-size: 14px;
   line-height: 1.65;
 }
 
+.dots {
+  display: inline-flex;
+  height: 16px;
+  align-items: center;
+  gap: 4px;
+}
+
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-text);
+  animation: dot-blink 1.2s infinite ease-in-out both;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dot-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
 .chatActionSummary {
   display: grid;
   gap: 2px;
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--border-strong);
   padding: 4px 0 4px 12px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
 .chatActionSummary strong {
   color: var(--foreground);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .chatActionSummary p {
   margin: 0;
 }
 
+/* Blok lipat "Dioptimasi Senopati": prompt hasil susunan dan bukti retrieval. */
+.optimized {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.optimized > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 0 14px;
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.optimized > summary::-webkit-details-marker {
+  display: none;
+}
+
+.optimized > summary:hover {
+  color: var(--foreground);
+}
+
+.optimized > summary b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.optimizedMark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--accent-text);
+}
+
+.optimizedMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optimizedChevron {
+  flex: none;
+  margin-left: auto;
+  transition: transform 150ms ease;
+}
+
+.optimized[open] .optimizedChevron {
+  transform: rotate(180deg);
+}
+
+.optimizedBody {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 14px;
+}
+
 .chatRecommendation {
   display: grid;
   min-width: 0;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--muted);
-  padding: 14px;
 }
 
 .chatRecommendation > div {
@@ -74,15 +175,17 @@
   gap: 4px;
 }
 
-.chatRecommendation strong {
+.chatRecommendation strong,
+.chatGraphEvidence strong {
   color: var(--foreground);
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 500;
 }
 
 .chatRecommendation p {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -90,11 +193,11 @@
   max-height: 240px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) - 2px);
-  background: var(--background);
+  border-radius: 10px;
+  background: var(--surface);
   padding: 12px;
   color: var(--foreground);
-  font: 12px/1.55 var(--font-mono);
+  font: 13px/1.55 var(--font-code);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -103,9 +206,17 @@
   display: grid;
   min-width: 0;
   gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.chatRecommendation + .chatGraphEvidence {
+  margin-top: 0;
+}
+
+.optimizedBody > .chatGraphEvidence:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .chatGraphEvidence > div {
@@ -113,16 +224,11 @@
   gap: 4px;
 }
 
-.chatGraphEvidence strong {
-  color: var(--foreground);
-  font-size: 13px;
-}
-
 .chatGraphEvidence p,
 .chatGraphEvidenceSource span {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -150,10 +256,10 @@
 
 .chatGraphEvidence blockquote {
   margin: 0;
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--border-strong);
   padding: 2px 0 2px 10px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -161,7 +267,7 @@
 .chatActivity {
   min-width: 0;
   border-top: 1px solid var(--border);
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .chatActivity > summary,
@@ -170,13 +276,11 @@
   min-height: 44px;
   align-items: center;
   color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   list-style: none;
   cursor: pointer;
-  transition:
-    color 140ms ease,
-    background-color 140ms ease;
+  transition: color 140ms ease;
 }
 
 .chatActivity > summary::-webkit-details-marker,
@@ -204,16 +308,13 @@
 
 .chatActivity > summary:hover,
 .activity > summary:hover {
-  border-radius: 6px;
-  background: var(--surface-muted);
-  color: var(--primary);
+  color: var(--foreground);
 }
 
 .chatActivity > summary:focus-visible,
-.activity > summary:focus-visible {
+.activity > summary:focus-visible,
+.optimized > summary:focus-visible {
   border-radius: 6px;
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 
 .activityContent {
@@ -237,7 +338,7 @@
   background: var(--surface-muted);
   padding: 8px 10px;
   color: var(--foreground);
-  font: 12px/1.5 var(--font-mono);
+  font: 12.5px/1.5 var(--font-code);
   white-space: pre-wrap;
 }
 
@@ -245,13 +346,44 @@
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.copyButton {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-left: -10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.copyButton:hover {
+  background: var(--hover);
+  color: var(--foreground);
 }
 
 .activity h3,
 .chatActivity h3 {
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dots i {
+    animation: none;
+  }
+
+  .optimizedChevron {
+    transition: none;
+  }
 }

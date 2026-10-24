@@ -3,8 +3,8 @@
   min-width: 0;
   gap: 12px;
   color: var(--foreground);
-  font-size: 14px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
 }
 
@@ -78,7 +78,7 @@
 }
 
 .message a {
-  color: var(--primary);
+  color: var(--accent-text);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -86,7 +86,7 @@
 .message a:focus-visible,
 .codeHeader button:focus-visible {
   border-radius: 5px;
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -106,7 +106,7 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f8fafc;
+  background: var(--sidebar);
 }
 
 .codeHeader {
@@ -116,11 +116,11 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--border);
-  background: #f1f5f9;
+  background: var(--surface);
   padding: 0 12px;
   color: var(--muted-foreground);
   font-family: var(--font-code);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .codeHeader button {
@@ -134,13 +134,13 @@
   border-radius: 6px;
   background: transparent;
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: 12px;
   cursor: pointer;
 }
 
 .codeHeader button:hover {
-  background: #e2e8f0;
+  background: var(--hover);
 }
 
 .codeBlock pre {
@@ -148,10 +148,10 @@
   overflow: auto;
   margin: 0;
   padding: 16px;
-  color: #0f172a;
+  color: var(--foreground);
   font-family: var(--font-code);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.6;
   tab-size: 2;
   white-space: pre;
 }
@@ -164,7 +164,7 @@
   max-width: 100%;
   overflow: auto;
   padding: 16px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .diagram {
@@ -176,40 +176,40 @@
 }
 
 .diagramNodeShape {
-  fill: #fff;
-  stroke: #94a3b8;
+  fill: var(--surface);
+  stroke: var(--border-strong);
   stroke-width: 1.5px;
 }
 
 .diagramNodeLabel {
-  fill: #0f172a;
-  font-family: var(--font-sans);
+  fill: var(--foreground);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 550;
 }
 
 .diagramEdge {
   fill: none;
-  stroke: #64748b;
+  stroke: var(--border-strong);
   stroke-width: 1.5px;
 }
 
 .diagramArrow {
-  fill: #64748b;
+  fill: var(--muted-foreground);
 }
 
 .diagramEdgeLabel {
-  fill: #475569;
-  font-family: var(--font-sans);
-  font-size: 10px;
+  fill: var(--muted-foreground);
+  font-family: var(--font-ui);
+  font-size: 12px;
 }
 
 .diagramFallback {
   display: grid;
   gap: 8px;
   padding: 12px 16px;
-  color: #475569;
-  font-family: var(--font-sans);
+  color: var(--muted-foreground);
+  font-family: var(--font-ui);
   font-size: 12px;
 }
 
@@ -217,9 +217,9 @@
   overflow: auto;
   margin: 0;
   border-radius: 6px;
-  background: #f1f5f9;
+  background: var(--surface-muted);
   padding: 10px;
-  color: #0f172a;
+  color: var(--foreground);
   font-family: var(--font-code);
   white-space: pre;
 }
@@ -270,11 +270,11 @@
 
 @media (max-width: 640px) {
   .message {
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .codeBlock pre {
     padding: 12px;
-    font-size: 11px;
+    font-size: 12px;
   }
 }

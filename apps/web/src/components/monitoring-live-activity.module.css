@@ -6,7 +6,7 @@
   border-radius: 11px;
   background: var(--surface);
   padding: 16px;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+  box-shadow: none;
 }
 
 .header {
@@ -22,10 +22,9 @@
   height: 32px;
   flex: none;
   place-items: center;
-  border: 1px solid #dbeafe;
-  border-radius: 9px;
-  background: #eff6ff;
-  color: var(--primary);
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
 }
 
 .heading {
@@ -47,12 +46,12 @@
 .error {
   margin: 3px 0 0;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
 .error {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .header > span {
@@ -74,8 +73,8 @@
   justify-content: center;
   border-radius: 6px;
   padding: 8px;
-  color: var(--primary);
-  font-size: 11px;
+  color: var(--accent-text);
+  font-size: 12px;
   font-weight: 550;
   text-decoration: underline;
   text-underline-offset: 2px;

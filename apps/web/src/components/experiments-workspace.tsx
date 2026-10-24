@@ -553,7 +553,9 @@ function ExperimentsWorkspaceForProject({
         )?.requestedModel;
         const defaultModelId =
           availableModels.find((model) => model.id === configuredTargetModelId)
-            ?.id ?? availableModels[0]?.id ?? "";
+            ?.id ??
+          availableModels[0]?.id ??
+          "";
         setPrompts(availablePrompts);
         setExperiments(experimentPayload.experiments ?? []);
         setSelectedPromptId((current) => {
@@ -567,9 +569,7 @@ function ExperimentsWorkspaceForProject({
         });
         setPilotModelId(defaultModelId);
         setControlledModelId((current) =>
-          availableModels.some(
-            (model) => model.id === current,
-          )
+          availableModels.some((model) => model.id === current)
             ? current
             : defaultModelId,
         );
@@ -793,7 +793,8 @@ function ExperimentsWorkspaceForProject({
   const optimizerReady = optimizerProvider?.status === "verified";
   const reportResult = reportMatches?.result ?? null;
   let runBlocker: string | null = null;
-  if (!activeProjectId) runBlocker = "Pilih proyek sebelum membandingkan prompt.";
+  if (!activeProjectId)
+    runBlocker = "Pilih proyek sebelum membandingkan prompt.";
   else if (projectDataLoading) runBlocker = "Memuat data proyek…";
   else if (projectDataError)
     runBlocker = "Data proyek tidak dapat dimuat. Muat ulang halaman.";
@@ -814,19 +815,21 @@ function ExperimentsWorkspaceForProject({
     ? null
     : projectDataLoading || projectDataError
       ? null
-    : promptVersionsLoading || promptVersionsError
-      ? null
-      : !selectedPromptVersion
-        ? "/workspace"
-        : !pilotModel || !pilotModelVerified || !optimizerReady
-          ? "/settings"
-          : null;
+      : promptVersionsLoading || promptVersionsError
+        ? null
+        : !selectedPromptVersion
+          ? "/workspace"
+          : !pilotModel || !pilotModelVerified || !optimizerReady
+            ? "/settings"
+            : null;
   const runBlockerLinkLabel =
     runBlockerHref === "/workspace" ? "Buka Workspace" : "Buka Pengaturan";
   const canStart =
     !starting && !loading && !projectDataLoading && runBlocker === null;
 
-  async function startPromptComparison(event: React.FormEvent<HTMLFormElement>) {
+  async function startPromptComparison(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     if (
       !activeProjectId ||
@@ -1122,7 +1125,7 @@ function ExperimentsWorkspaceForProject({
             </div>
 
             {runBlocker ? (
-              <p className="helper" role="status">
+              <p className={`helper ${styles.blocker}`} role="status">
                 {runBlocker}{" "}
                 {runBlockerHref ? (
                   <Link className="knowledge-link" href={runBlockerHref}>
@@ -1262,7 +1265,9 @@ function ExperimentsWorkspaceForProject({
                   report={reportMatches?.controlledReport ?? null}
                   status={reportMatches?.status ?? selectedExperiment.status}
                   connection={reportMatches?.connection ?? "connecting"}
-                  error={reportMatches?.error ?? selectedExperiment.errorSummary}
+                  error={
+                    reportMatches?.error ?? selectedExperiment.errorSummary
+                  }
                   decisionError={decisionError}
                   decisionBusy={decisionBusy}
                   onDecision={(decision, note) =>
@@ -1444,7 +1449,9 @@ function ExperimentsWorkspaceForProject({
                         className="input"
                         maxLength={500}
                         value={decisionNote}
-                        onChange={(event) => setDecisionNote(event.target.value)}
+                        onChange={(event) =>
+                          setDecisionNote(event.target.value)
+                        }
                         placeholder="Catat alasan singkat"
                       />
                     </label>
@@ -1477,7 +1484,8 @@ function ExperimentsWorkspaceForProject({
                             (decision === "accepted" &&
                               !selectedExperiment.evidenceEligible) ||
                             ["queued", "running", "cancel_requested"].includes(
-                              reportMatches?.status ?? selectedExperiment.status,
+                              reportMatches?.status ??
+                                selectedExperiment.status,
                             )
                           }
                           onClick={() => void saveDecision(decision)}

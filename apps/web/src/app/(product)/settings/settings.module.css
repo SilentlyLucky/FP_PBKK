@@ -13,7 +13,7 @@
 .cardHeader {
   display: grid;
   min-width: 0;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   border-bottom: 1px solid var(--border);
@@ -21,7 +21,7 @@
 }
 
 .cardHeader {
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   padding: 16px 17px 12px;
 }
@@ -31,10 +31,9 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid #dbeafe;
-  border-radius: 9px;
-  background: #eff6ff;
-  color: var(--primary);
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
 }
 
 .sectionHeadingCopy {
@@ -135,7 +134,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 9px;
 }
 
@@ -161,11 +160,11 @@
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--accent-border);
   border-radius: 9px;
-  background: #eff6ff;
+  background: var(--accent-soft);
   padding: 11px 13px;
-  color: #1e40af;
+  color: var(--accent-text);
 }
 
 .note > svg {
@@ -216,5 +215,32 @@
   .factList > div > span:last-child {
     max-width: 100%;
     text-align: left;
+  }
+}
+
+/* Provider & model menjadi bagian utama tanpa kartu pembungkus ganda. */
+.providerSection {
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.providerSection > .sectionHeader {
+  border-bottom: 0;
+  padding: 0 0 12px;
+}
+
+.providerBody {
+  padding: 0;
+}
+
+.secondaryGrid {
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .sectionHeader {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
   }
 }

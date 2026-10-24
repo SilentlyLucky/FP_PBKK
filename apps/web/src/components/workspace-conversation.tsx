@@ -2,17 +2,17 @@
 
 import type { ProviderConnectionState } from "@promptlab/contracts";
 import {
+  ArrowUp,
   ArrowUpRight,
-  BookOpenText,
   Clock3,
   Ellipsis,
   FolderOpen,
   LoaderCircle,
   MessageSquarePlus,
+  PanelRight,
+  Plus,
   Search,
-  Send,
   ShieldAlert,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -24,10 +24,16 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { useProjectScope } from "@/components/project-scope";
 import { LocalFileReview } from "@/components/local-file-review";
 import { LocalSourceBrowser } from "@/components/local-source-browser";
+import { useSidebar } from "@/components/sidebar-slot";
+import {
+  ComposerChoicePill,
+  type ComposerChoiceOption,
+} from "@/components/workspace-composer-controls";
 import { WorkspaceRunResult } from "@/components/workspace-run-result";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -137,6 +143,14 @@ function conversationRecordUrl(
 ): string {
   return `${conversationCollectionUrl(projectId)}/${encodeURIComponent(conversationId)}`;
 }
+
+const preferenceOptions: ComposerChoiceOption[] = [
+  { value: "efficiency", label: "Ringkas" },
+  { value: "balanced", label: "Seimbang" },
+  { value: "quality", label: "Mendalam" },
+];
+
+const THINKING_STANDARD_VALUE = "__standar__";
 
 function thinkingEffortLabel(effort: string): string {
   switch (effort) {
@@ -331,7 +345,11 @@ export function WorkspaceConversation() {
   const [conversationRunError, setConversationRunError] = useState<
     string | null
   >(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const {
+    slot: sidebarSlot,
+    mobileOpen: historyOpen,
+    setMobileOpen: setHistoryOpen,
+  } = useSidebar();
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [workspaceAccessOpen, setWorkspaceAccessOpen] = useState(false);
   const [fileReviewOpen, setFileReviewOpen] = useState(false);
@@ -359,7 +377,7 @@ export function WorkspaceConversation() {
     const textarea = composerRef.current?.querySelector("textarea");
     if (!textarea) return;
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
   }, [draft]);
 
   const currentProviderSnapshot =
@@ -451,6 +469,30 @@ export function WorkspaceConversation() {
     )
       ? selectedProviderModel.defaultReasoningEffort
       : undefined;
+  const thinkingOptions: ComposerChoiceOption[] = [
+    { value: "auto", label: "Otomatis" },
+    {
+      value: THINKING_STANDARD_VALUE,
+      label: `Standar${
+        defaultThinkingEffort
+          ? ` · ${thinkingEffortLabel(defaultThinkingEffort)}`
+          : ""
+      }`,
+    },
+    ...(selectedThinkingEffortUnavailable
+      ? [
+          {
+            value: selectedThinkingEffortUnavailable,
+            label: `${thinkingEffortLabel(selectedThinkingEffortUnavailable)} · tidak didukung model saat ini`,
+            disabled: true,
+          },
+        ]
+      : []),
+    ...supportedThinkingEfforts.map((effort) => ({
+      value: effort,
+      label: thinkingEffortLabel(effort),
+    })),
+  ];
   const codexTarget = providers.find(
     (provider) =>
       provider.provider === "codex_app_server" && provider.role === "target",
@@ -1596,6 +1638,23 @@ export function WorkspaceConversation() {
   const unavailableSources = sources.filter(
     (source) => !source.deleted && (!source.eligible || !source.versionId),
   );
+  const selectedSourceChips = selectedSourceIds
+    .map((sourceId) => sources.find((source) => source.id === sourceId))
+    .filter((source): source is (typeof sources)[number] => Boolean(source));
+  const isEmptyChat =
+    Boolean(activeProjectId) &&
+    conversationHistoryStatus === "ready" &&
+    !activeConversation?.turns.length;
+
+  function openSourceContext() {
+    setContextPanelOpen(true);
+    window.requestAnimationFrame(() =>
+      document
+        .getElementById("workspace-context-sources")
+        ?.scrollIntoView({ block: "start" }),
+    );
+  }
+
   const composerDisabled =
     !activeProjectId ||
     conversationHistoryStatus !== "ready" ||
@@ -1642,196 +1701,207 @@ export function WorkspaceConversation() {
 
   return (
     <section className={styles.page} aria-label="Workspace">
-      <h1 className={styles.mobileWorkspaceTitle}>Workspace</h1>
       <div
         className={
-          styles.layout +
-          (historyOpen ? " " + styles.historyVisible : "") +
-          (contextPanelOpen ? " " + styles.contextVisible : "")
+          styles.layout + (contextPanelOpen ? " " + styles.contextVisible : "")
         }
       >
-        <aside
-          id="workspace-history"
-          className={styles.historyPanel}
-          aria-label="Riwayat percakapan"
-        >
-          <div className={styles.historyHeader}>
-            <div>
-              <h1 id="workspace-title">Workspace</h1>
-              <p>{activeProject?.name ?? "Pilih proyek dari header"}</p>
-            </div>
-            <Button
-              type="button"
-              className={styles.newConversationButton}
-              onClick={startNewConversation}
-              disabled={
-                !activeProjectId || conversationHistoryStatus !== "ready"
-              }
-            >
-              <MessageSquarePlus aria-hidden="true" size={16} />
-              Percakapan baru
-            </Button>
-            <label
-              className={styles.historySearch}
-              htmlFor="conversation-search"
-            >
-              <Search aria-hidden="true" size={16} />
-              <span className="sr-only">Cari percakapan</span>
-              <input
-                id="conversation-search"
-                type="search"
-                value={conversationSearch}
-                placeholder="Cari percakapan…"
-                onChange={(event) => setConversationSearch(event.target.value)}
-              />
-            </label>
-          </div>
-          <div className={styles.historyList}>
-            {conversationHistoryStatus === "ready" && historyActionError ? (
-              <p className={styles.historyActionError} role="alert">
-                {historyActionError}
-              </p>
-            ) : null}
-            {conversationHistoryStatus === "loading" ? (
-              <p className={styles.historyLoading} role="status">
-                <LoaderCircle
-                  className={styles.spin}
-                  aria-hidden="true"
-                  size={15}
-                />
-                Memuat riwayat percakapan…
-              </p>
-            ) : null}
-            {conversationHistoryStatus === "error" ? (
-              <div className={styles.historyError} role="alert">
-                <p>
-                  {conversationHistoryError ??
-                    "Riwayat percakapan tidak dapat dimuat."}
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setHistoryReloadKey((value) => value + 1)}
-                >
-                  Coba lagi
-                </Button>
-              </div>
-            ) : null}
-            {conversationHistoryStatus === "ready"
-              ? conversationGroups.map((group) =>
-                  group.conversations.length ? (
-                    <section
-                      className={styles.historyGroup}
-                      key={group.label}
-                      aria-label={group.label}
-                    >
-                      <h2>{group.label}</h2>
-                      {group.conversations.map((conversation) => (
-                        <div
-                          className={styles.historyItemRow}
-                          key={conversation.id}
-                        >
-                          <button
-                            type="button"
-                            className={
-                              styles.historyItem +
-                              (conversation.id === activeConversationId
-                                ? " " + styles.historyItemActive
-                                : "")
-                            }
-                            aria-current={
-                              conversation.id === activeConversationId
-                                ? "page"
-                                : undefined
-                            }
-                            onClick={() => selectConversation(conversation)}
+        {sidebarSlot
+          ? createPortal(
+              <aside
+                id="workspace-history"
+                className={styles.historyPanel}
+                aria-label="Riwayat percakapan"
+              >
+                <div className={styles.historyHeader}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={styles.newConversationButton}
+                    onClick={startNewConversation}
+                    disabled={
+                      !activeProjectId || conversationHistoryStatus !== "ready"
+                    }
+                  >
+                    <MessageSquarePlus aria-hidden="true" size={16} />
+                    Percakapan baru
+                  </Button>
+                  <label
+                    className={styles.historySearch}
+                    htmlFor="conversation-search"
+                  >
+                    <Search aria-hidden="true" size={16} />
+                    <span className="sr-only">Cari percakapan</span>
+                    <input
+                      id="conversation-search"
+                      type="search"
+                      value={conversationSearch}
+                      placeholder="Cari percakapan…"
+                      onChange={(event) =>
+                        setConversationSearch(event.target.value)
+                      }
+                    />
+                  </label>
+                </div>
+                <div className={styles.historyList}>
+                  {conversationHistoryStatus === "ready" &&
+                  historyActionError ? (
+                    <p className={styles.historyActionError} role="alert">
+                      {historyActionError}
+                    </p>
+                  ) : null}
+                  {conversationHistoryStatus === "loading" ? (
+                    <p className={styles.historyLoading} role="status">
+                      <LoaderCircle
+                        className={styles.spin}
+                        aria-hidden="true"
+                        size={15}
+                      />
+                      Memuat riwayat percakapan…
+                    </p>
+                  ) : null}
+                  {conversationHistoryStatus === "error" ? (
+                    <div className={styles.historyError} role="alert">
+                      <p>
+                        {conversationHistoryError ??
+                          "Riwayat percakapan tidak dapat dimuat."}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          setHistoryReloadKey((value) => value + 1)
+                        }
+                      >
+                        Coba lagi
+                      </Button>
+                    </div>
+                  ) : null}
+                  {conversationHistoryStatus === "ready"
+                    ? conversationGroups.map((group) =>
+                        group.conversations.length ? (
+                          <section
+                            className={styles.historyGroup}
+                            key={group.label}
+                            aria-label={group.label}
                           >
-                            <span className={styles.historyItemCopy}>
-                              <strong>{conversation.title}</strong>
-                              <small>
-                                {shortText(
-                                  conversation.turns.at(-1)?.userText ??
-                                    "Belum ada pesan",
-                                  58,
-                                )}
-                              </small>
-                            </span>
-                            <time dateTime={conversation.updatedAt}>
-                              {conversationTime(conversation.updatedAt)}
-                            </time>
-                          </button>
-                          <details className={styles.historyActions}>
-                            <summary
-                              aria-label={`Tindakan untuk ${conversation.title}`}
-                              title="Tindakan percakapan"
-                            >
-                              <Ellipsis aria-hidden="true" size={17} />
-                            </summary>
-                            <div>
-                              <button
-                                type="button"
-                                disabled={deletingConversationId !== null}
-                                onClick={() =>
-                                  void deleteConversation(conversation)
-                                }
+                            <h2>{group.label}</h2>
+                            {group.conversations.map((conversation) => (
+                              <div
+                                className={styles.historyItemRow}
+                                key={conversation.id}
                               >
-                                {deletingConversationId === conversation.id ? (
-                                  <LoaderCircle
-                                    className={styles.spin}
-                                    aria-hidden="true"
-                                    size={15}
-                                  />
-                                ) : (
-                                  <Trash2 aria-hidden="true" size={15} />
-                                )}
-                                Hapus percakapan
-                              </button>
-                            </div>
-                          </details>
-                        </div>
-                      ))}
-                    </section>
-                  ) : null,
-                )
-              : null}
-            {conversationHistoryStatus === "ready" &&
-            !sortedConversations.length ? (
-              <p className={styles.historyEmpty}>Belum ada percakapan.</p>
-            ) : null}
-            {conversationHistoryStatus === "ready" &&
-            sortedConversations.length > 0 &&
-            !filteredConversations.length ? (
-              <p className={styles.historyEmpty}>
-                Tidak ada percakapan yang cocok dengan pencarian.
-              </p>
-            ) : null}
-          </div>
-        </aside>
+                                <button
+                                  type="button"
+                                  className={
+                                    styles.historyItem +
+                                    (conversation.id === activeConversationId
+                                      ? " " + styles.historyItemActive
+                                      : "")
+                                  }
+                                  aria-current={
+                                    conversation.id === activeConversationId
+                                      ? "page"
+                                      : undefined
+                                  }
+                                  title={conversation.title}
+                                  onClick={() =>
+                                    selectConversation(conversation)
+                                  }
+                                >
+                                  <span className={styles.historyItemCopy}>
+                                    <strong>{conversation.title}</strong>
+                                    <small>
+                                      {shortText(
+                                        conversation.turns.at(-1)?.userText ??
+                                          "Belum ada pesan",
+                                        58,
+                                      )}
+                                    </small>
+                                  </span>
+                                  <time dateTime={conversation.updatedAt}>
+                                    {conversationTime(conversation.updatedAt)}
+                                  </time>
+                                </button>
+                                <details className={styles.historyActions}>
+                                  <summary
+                                    aria-label={`Tindakan untuk ${conversation.title}`}
+                                    title="Tindakan percakapan"
+                                  >
+                                    <Ellipsis aria-hidden="true" size={17} />
+                                  </summary>
+                                  <div>
+                                    <button
+                                      type="button"
+                                      disabled={deletingConversationId !== null}
+                                      onClick={() =>
+                                        void deleteConversation(conversation)
+                                      }
+                                    >
+                                      {deletingConversationId ===
+                                      conversation.id ? (
+                                        <LoaderCircle
+                                          className={styles.spin}
+                                          aria-hidden="true"
+                                          size={15}
+                                        />
+                                      ) : (
+                                        <Trash2 aria-hidden="true" size={15} />
+                                      )}
+                                      Hapus percakapan
+                                    </button>
+                                  </div>
+                                </details>
+                              </div>
+                            ))}
+                          </section>
+                        ) : null,
+                      )
+                    : null}
+                  {conversationHistoryStatus === "ready" &&
+                  !sortedConversations.length ? (
+                    <p className={styles.historyEmpty}>Belum ada percakapan.</p>
+                  ) : null}
+                  {conversationHistoryStatus === "ready" &&
+                  sortedConversations.length > 0 &&
+                  !filteredConversations.length ? (
+                    <p className={styles.historyEmpty}>
+                      Tidak ada percakapan yang cocok dengan pencarian.
+                    </p>
+                  ) : null}
+                </div>
+              </aside>,
+              sidebarSlot,
+            )
+          : null}
 
         <div className={styles.chatPanel} data-testid="workspace-chat-panel">
           <header className={styles.chatHeader}>
             <div className={styles.chatTitle}>
-              <h2>{activeConversation?.title ?? "Percakapan baru"}</h2>
-              <p>
+              <h1 id="workspace-title">Workspace</h1>
+              <p className={styles.chatMeta}>
                 {activeProject?.name ?? "Pilih atau buat proyek untuk memulai"}
                 {selectedSourceIds.length
                   ? ` · ${selectedSourceIds.length} sumber dipilih`
                   : ""}
               </p>
+              <span className={styles.crumbSep} aria-hidden="true">
+                /
+              </span>
+              <h2>{activeConversation?.title ?? "Percakapan baru"}</h2>
             </div>
             <div className={styles.chatHeaderActions}>
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
+                variant="ghost"
                 className={styles.mobileHistoryButton}
                 aria-expanded={historyOpen}
                 aria-controls="workspace-history"
-                onClick={() => setHistoryOpen((open) => !open)}
+                onClick={() => setHistoryOpen(!historyOpen)}
               >
                 <Clock3 aria-hidden="true" size={16} />
-                Riwayat
+                <span className={styles.buttonLabel}>Riwayat</span>
               </Button>
               <span className={styles.chatHeaderStatus}>
                 {providerLoading ? (
@@ -1845,322 +1915,376 @@ export function WorkspaceConversation() {
               <Button
                 type="button"
                 variant="secondary"
-                size="sm"
                 aria-expanded={contextPanelOpen}
                 aria-controls="workspace-context"
                 onClick={() => setContextPanelOpen((open) => !open)}
               >
-                <BookOpenText aria-hidden="true" size={15} />
-                Konteks
+                <PanelRight aria-hidden="true" size={16} />
+                <span className={styles.buttonLabel}>Konteks</span>
               </Button>
             </div>
           </header>
 
           <div
-            className={styles.messageScroll}
-            data-testid="workspace-message-scroll"
+            className={`${styles.chatBody}${isEmptyChat ? " " + styles.chatBodyEmpty : ""}`}
           >
-            {!activeProjectId ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyIcon} aria-hidden="true">
-                  <MessageSquarePlus size={20} />
+            <div
+              className={styles.messageScroll}
+              data-testid="workspace-message-scroll"
+            >
+              {!activeProjectId ? (
+                <div className={styles.emptyState}>
+                  <h3>Pilih proyek untuk mulai</h3>
+                  <p>
+                    Pilih atau buat proyek di bagian atas untuk memulai
+                    percakapan.
+                  </p>
                 </div>
-                <h3>Pilih proyek untuk mulai</h3>
-                <p>
-                  Pilih atau buat proyek di bagian atas untuk memulai
-                  percakapan.
-                </p>
+              ) : null}
+
+              {activeProjectId &&
+              conversationHistoryStatus === "ready" &&
+              !activeConversation?.turns.length ? (
+                <div className={`${styles.emptyState} ${styles.emptyGreeting}`}>
+                  <h3>Apa yang ingin Anda kerjakan?</h3>
+                  <p>
+                    Tulis pertanyaan atau tugas. PromptLab akan membantu
+                    mengoptimalkan dan menjalankannya.
+                  </p>
+                  {providerError ? (
+                    <p className={styles.unavailableText} role="status">
+                      Status provider tidak dapat dimuat: {providerError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeConversation?.turns.map((turn, turnIndex) => (
+                <article className={styles.exchange} key={turn.id}>
+                  <div className={styles.userMessage}>
+                    <p className={styles.messageLabel}>Anda</p>
+                    <p className={styles.userText}>{turn.userText}</p>
+                    <time dateTime={turn.createdAt}>
+                      {formatDate(turn.createdAt)}
+                    </time>
+                  </div>
+
+                  {turn.runId &&
+                  activeProjectId &&
+                  conversationHistoryStatus !== "loading" ? (
+                    <WorkspaceRunResult
+                      key={activeProjectId + ":" + turn.runId}
+                      projectId={activeProjectId}
+                      runId={turn.runId}
+                      initialStatus={turn.status}
+                      providerLabel="Codex"
+                      focusOnMount={false}
+                      chatPresentation
+                      userPrompt={turn.userText}
+                      initialAnswer={turn.assistantText}
+                      conversationContextPrompts={activeConversation.turns
+                        .slice(Math.max(0, turnIndex - 8), turnIndex)
+                        .map((priorTurn) => priorTurn.userText)}
+                      onCompleted={(assistantText) =>
+                        updateTurn(activeConversation.id, turn.id, {
+                          assistantText,
+                          status: "succeeded",
+                        })
+                      }
+                      onStatusChange={(status) =>
+                        updateTurn(activeConversation.id, turn.id, { status })
+                      }
+                    />
+                  ) : turn.runId && conversationHistoryStatus === "loading" ? (
+                    <p
+                      className={styles.pendingMessage}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Memuat jawaban tersimpan…
+                    </p>
+                  ) : turn.status === "preparing" ||
+                    turn.status === "creating_run" ||
+                    turn.status === "run_creation_unconfirmed" ? (
+                    <p
+                      className={styles.pendingMessage}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <LoaderCircle
+                        className={styles.spin}
+                        aria-hidden="true"
+                        size={15}
+                      />{" "}
+                      {statusText(turn.status)}
+                    </p>
+                  ) : turn.status === "preparation_failed" ? (
+                    <div className={styles.messageError} role="alert">
+                      Pesan ini belum menjadi run backend. Periksa kesalahan di
+                      composer lalu coba lagi.
+                    </div>
+                  ) : turn.status === "canceled" ? (
+                    <p className={styles.pendingMessage} role="status">
+                      Run dibatalkan. Anda dapat melanjutkan percakapan.
+                    </p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+
+            {providerError && activeProjectId ? (
+              <div className={styles.inlineUnavailable} role="status">
+                <ShieldAlert aria-hidden="true" size={17} />
+                <span>Status koneksi provider gagal dimuat.</span>
+                <Button asChild variant="secondary" size="sm">
+                  <Link href="/settings">
+                    Buka Pengaturan
+                    <ArrowUpRight aria-hidden="true" size={14} />
+                  </Link>
+                </Button>
               </div>
             ) : null}
-
-            {activeProjectId &&
-            conversationHistoryStatus === "ready" &&
-            !activeConversation?.turns.length ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyIcon} aria-hidden="true">
-                  <Sparkles size={20} />
-                </div>
-                <h3>Apa yang ingin Anda kerjakan?</h3>
-                <p>
-                  Tulis pertanyaan atau tugas. PromptLab akan membantu
-                  mengoptimalkan dan menjalankannya.
-                </p>
-                {providerError ? (
-                  <p className={styles.unavailableText} role="status">
-                    Status provider tidak dapat dimuat: {providerError}
-                  </p>
+            {!providerError &&
+            !providerLoading &&
+            activeProjectId &&
+            (!senopatiReady || !codexTargetReady) ? (
+              <div className={styles.inlineUnavailable} role="status">
+                <ShieldAlert aria-hidden="true" size={17} />
+                <span>
+                  {!senopatiReady && !codexTargetReady
+                    ? "Hubungkan Senopati dan Codex untuk mulai."
+                    : !senopatiReady
+                      ? "Senopati perlu diverifikasi untuk mengoptimasi prompt."
+                      : "Codex perlu terverifikasi untuk menjawab pesan."}
+                </span>
+                {!senopatiReady ? (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/settings">
+                      Atur Senopati
+                      <ArrowUpRight aria-hidden="true" size={14} />
+                    </Link>
+                  </Button>
+                ) : null}
+                {!codexTargetReady ? (
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href="/settings">
+                      Hubungkan Codex
+                      <ArrowUpRight aria-hidden="true" size={14} />
+                    </Link>
+                  </Button>
                 ) : null}
               </div>
             ) : null}
 
-            {activeConversation?.turns.map((turn, turnIndex) => (
-              <article className={styles.exchange} key={turn.id}>
-                <div className={styles.userMessage}>
-                  <p className={styles.messageLabel}>Anda</p>
-                  <p className={styles.userText}>{turn.userText}</p>
-                  <time dateTime={turn.createdAt}>
-                    {formatDate(turn.createdAt)}
-                  </time>
-                </div>
-
-                {turn.runId &&
-                activeProjectId &&
-                conversationHistoryStatus !== "loading" ? (
-                  <WorkspaceRunResult
-                    key={activeProjectId + ":" + turn.runId}
-                    projectId={activeProjectId}
-                    runId={turn.runId}
-                    initialStatus={turn.status}
-                    providerLabel="Codex"
-                    focusOnMount={false}
-                    chatPresentation
-                    userPrompt={turn.userText}
-                    initialAnswer={turn.assistantText}
-                    conversationContextPrompts={activeConversation.turns
-                      .slice(Math.max(0, turnIndex - 8), turnIndex)
-                      .map((priorTurn) => priorTurn.userText)}
-                    onCompleted={(assistantText) =>
-                      updateTurn(activeConversation.id, turn.id, {
-                        assistantText,
-                        status: "succeeded",
-                      })
+            {blockingTurn ? (
+              <div className={styles.runGate} role="status" aria-live="polite">
+                <p>{blockingTurnMessage}</p>
+                {blockingTurn.status === "run_creation_unconfirmed" &&
+                blockingTurn.runCreateRequest ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={reconcilingTurnId === blockingTurn.id}
+                    onClick={() =>
+                      void reconcilePendingRun(
+                        activeConversation!.id,
+                        blockingTurn,
+                      )
                     }
-                    onStatusChange={(status) =>
-                      updateTurn(activeConversation.id, turn.id, { status })
+                  >
+                    {reconcilingTurnId === blockingTurn.id
+                      ? "Memeriksa run…"
+                      : "Periksa atau temukan run"}
+                  </Button>
+                ) : null}
+                {blockingTurn.runId &&
+                ["queued", "running", "cancel_requested"].includes(
+                  blockingTurn.status,
+                ) ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={cancelingTurnId === blockingTurn.id}
+                    onClick={() => void cancelConversationRun(blockingTurn)}
+                  >
+                    {cancelingTurnId === blockingTurn.id
+                      ? "Membatalkan run…"
+                      : blockingTurn.status === "cancel_requested"
+                        ? "Periksa pembatalan"
+                        : "Batalkan run"}
+                  </Button>
+                ) : null}
+                {blockingTurn.runId &&
+                blockingTurn.status === "interrupted_unknown" ? (
+                  <Link
+                    className="workspace-result-link"
+                    href={"/runs?run=" + encodeURIComponent(blockingTurn.runId)}
+                  >
+                    Periksa aktivitas run
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+            {conversationRunError ? (
+              <p className={styles.composerError} role="alert">
+                {conversationRunError}
+              </p>
+            ) : null}
+
+            <div className={styles.composerDock}>
+              <form
+                ref={composerRef}
+                className={styles.composer}
+                id="workspace-composer"
+                onSubmit={(event) => void submitMessage(event)}
+              >
+                <label className="sr-only" htmlFor="workspace-message">
+                  Pesan
+                </label>
+                {selectedSourceChips.length ? (
+                  <div className={styles.sourceChips}>
+                    {selectedSourceChips.map((source) => (
+                      <span className={styles.chip} key={source.id}>
+                        <span>{source.displayName}</span>
+                        <button
+                          type="button"
+                          className={styles.chipRemove}
+                          aria-label={`Lepas ${source.displayName}`}
+                          disabled={
+                            sending ||
+                            conversationHistoryStatus !== "ready" ||
+                            selectedSourceValidation.issues.length > 0
+                          }
+                          onClick={() =>
+                            updateSources(
+                              selectedSourceIds.filter(
+                                (id) => id !== source.id,
+                              ),
+                            )
+                          }
+                        >
+                          <X aria-hidden="true" size={14} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <textarea
+                  id="workspace-message"
+                  value={draft}
+                  maxLength={MAX_WORKSPACE_MESSAGE_CHARACTERS}
+                  placeholder="Ketik pesan Anda…"
+                  onChange={(event) => updateDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      composerRef.current?.requestSubmit();
+                    }
+                  }}
+                  disabled={
+                    sending ||
+                    !activeProjectId ||
+                    conversationHistoryStatus !== "ready" ||
+                    !senopatiReady ||
+                    !codexTargetReady
+                  }
+                  aria-describedby="workspace-composer-help"
+                />
+                {sendError ? (
+                  <p className={styles.composerError} role="alert">
+                    {sendError}
+                  </p>
+                ) : null}
+                {historyStorageError ? (
+                  <p className={styles.composerError} role="status">
+                    Salinan browser tidak tersimpan. Riwayat utama tetap
+                    disimpan di database aplikasi.
+                  </p>
+                ) : null}
+                <div className={styles.composerBar}>
+                  <button
+                    type="button"
+                    className={styles.plusButton}
+                    aria-label={
+                      selectedSourceIds.length
+                        ? `Sumber · ${selectedSourceIds.length}`
+                        : "Sumber"
+                    }
+                    title="Sumber"
+                    aria-controls="workspace-context"
+                    aria-expanded={contextPanelOpen}
+                    onClick={openSourceContext}
+                  >
+                    <Plus aria-hidden="true" size={18} />
+                  </button>
+                  <ComposerChoicePill
+                    id="workspace-preference"
+                    name="Gaya jawaban"
+                    value={preference}
+                    disabled={
+                      sending ||
+                      conversationHistoryStatus !== "ready" ||
+                      selectedSourceValidation.issues.length > 0
+                    }
+                    options={preferenceOptions}
+                    onValueChange={(value) =>
+                      updatePreference(value as WorkspacePreference)
                     }
                   />
-                ) : turn.runId && conversationHistoryStatus === "loading" ? (
-                  <p
-                    className={styles.pendingMessage}
-                    role="status"
-                    aria-live="polite"
+                  {codexTargetReady &&
+                  (supportedThinkingEfforts.length > 0 ||
+                    selectedThinkingEffortUnavailable) ? (
+                    <ComposerChoicePill
+                      id="workspace-thinking"
+                      name="Reasoning effort Codex"
+                      visibleName="Thinking"
+                      value={
+                        selectedThinkingValue === ""
+                          ? THINKING_STANDARD_VALUE
+                          : selectedThinkingValue
+                      }
+                      disabled={
+                        sending || conversationHistoryStatus !== "ready"
+                      }
+                      describedBy="workspace-thinking-help"
+                      options={thinkingOptions}
+                      onValueChange={(value) =>
+                        updateThinkingEffort(
+                          value === THINKING_STANDARD_VALUE ? "" : value,
+                        )
+                      }
+                    />
+                  ) : null}
+                  <span className={styles.composerSpacer} />
+                  <button
+                    type="submit"
+                    className={styles.sendButton}
+                    disabled={composerDisabled || !draft.trim()}
+                    aria-label={sending ? "Mengirim pesan" : "Kirim pesan"}
                   >
-                    Memuat jawaban tersimpan…
-                  </p>
-                ) : turn.status === "preparing" ||
-                  turn.status === "creating_run" ||
-                  turn.status === "run_creation_unconfirmed" ? (
-                  <p
-                    className={styles.pendingMessage}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <LoaderCircle
-                      className={styles.spin}
-                      aria-hidden="true"
-                      size={15}
-                    />{" "}
-                    {statusText(turn.status)}
-                  </p>
-                ) : turn.status === "preparation_failed" ? (
-                  <div className={styles.messageError} role="alert">
-                    Pesan ini belum menjadi run backend. Periksa kesalahan di
-                    composer lalu coba lagi.
-                  </div>
-                ) : turn.status === "canceled" ? (
-                  <p className={styles.pendingMessage} role="status">
-                    Run dibatalkan. Anda dapat melanjutkan percakapan.
-                  </p>
-                ) : null}
-              </article>
-            ))}
-          </div>
-
-          {providerError && activeProjectId ? (
-            <div className={styles.inlineUnavailable} role="status">
-              <ShieldAlert aria-hidden="true" size={17} />
-              <span>Status koneksi provider gagal dimuat.</span>
-              <Button asChild variant="secondary" size="sm">
-                <Link href="/settings">
-                  Buka Pengaturan
-                  <ArrowUpRight aria-hidden="true" size={14} />
-                </Link>
-              </Button>
-            </div>
-          ) : null}
-          {!providerError &&
-          !providerLoading &&
-          activeProjectId &&
-          (!senopatiReady || !codexTargetReady) ? (
-            <div className={styles.inlineUnavailable} role="status">
-              <ShieldAlert aria-hidden="true" size={17} />
-              <span>
-                {!senopatiReady && !codexTargetReady
-                  ? "Hubungkan Senopati dan Codex untuk mulai."
-                  : !senopatiReady
-                    ? "Senopati perlu diverifikasi untuk mengoptimasi prompt."
-                    : "Codex perlu terverifikasi untuk menjawab pesan."}
-              </span>
-              {!senopatiReady ? (
-                <Button asChild variant="secondary" size="sm">
-                  <Link href="/settings">
-                    Atur Senopati
-                    <ArrowUpRight aria-hidden="true" size={14} />
-                  </Link>
-                </Button>
-              ) : null}
-              {!codexTargetReady ? (
-                <Button asChild variant="secondary" size="sm">
-                  <Link href="/settings">
-                    Hubungkan Codex
-                    <ArrowUpRight aria-hidden="true" size={14} />
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {blockingTurn ? (
-            <div className={styles.runGate} role="status" aria-live="polite">
-              <p>{blockingTurnMessage}</p>
-              {blockingTurn.status === "run_creation_unconfirmed" &&
-              blockingTurn.runCreateRequest ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={reconcilingTurnId === blockingTurn.id}
-                  onClick={() =>
-                    void reconcilePendingRun(
-                      activeConversation!.id,
-                      blockingTurn,
-                    )
-                  }
-                >
-                  {reconcilingTurnId === blockingTurn.id
-                    ? "Memeriksa run…"
-                    : "Periksa atau temukan run"}
-                </Button>
-              ) : null}
-              {blockingTurn.runId &&
-              ["queued", "running", "cancel_requested"].includes(
-                blockingTurn.status,
-              ) ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={cancelingTurnId === blockingTurn.id}
-                  onClick={() => void cancelConversationRun(blockingTurn)}
-                >
-                  {cancelingTurnId === blockingTurn.id
-                    ? "Membatalkan run…"
-                    : blockingTurn.status === "cancel_requested"
-                      ? "Periksa pembatalan"
-                      : "Batalkan run"}
-                </Button>
-              ) : null}
-              {blockingTurn.runId &&
-              blockingTurn.status === "interrupted_unknown" ? (
-                <Link
-                  className="workspace-result-link"
-                  href={"/runs?run=" + encodeURIComponent(blockingTurn.runId)}
-                >
-                  Periksa aktivitas run
-                </Link>
-              ) : null}
-            </div>
-          ) : null}
-          {conversationRunError ? (
-            <p className={styles.composerError} role="alert">
-              {conversationRunError}
-            </p>
-          ) : null}
-
-          <form
-            ref={composerRef}
-            className={styles.composer}
-            id="workspace-composer"
-            onSubmit={(event) => void submitMessage(event)}
-          >
-            <label className="sr-only" htmlFor="workspace-message">
-              Pesan
-            </label>
-            <textarea
-              id="workspace-message"
-              value={draft}
-              maxLength={MAX_WORKSPACE_MESSAGE_CHARACTERS}
-              placeholder="Ketik pesan Anda…"
-              onChange={(event) => updateDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  composerRef.current?.requestSubmit();
-                }
-              }}
-              disabled={
-                sending ||
-                !activeProjectId ||
-                conversationHistoryStatus !== "ready" ||
-                !senopatiReady ||
-                !codexTargetReady
-              }
-              aria-describedby="workspace-composer-help"
-            />
-            {sendError ? (
-              <p className={styles.composerError} role="alert">
-                {sendError}
-              </p>
-            ) : null}
-            {historyStorageError ? (
-              <p className={styles.composerError} role="status">
-                Salinan browser tidak tersimpan. Riwayat utama tetap disimpan di
-                database aplikasi.
-              </p>
-            ) : null}
-            <div className={styles.composerFooter}>
-              <div className={styles.composerActions}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  aria-controls="workspace-context"
-                  aria-expanded={contextPanelOpen}
-                  onClick={() => setContextPanelOpen(true)}
-                >
-                  <BookOpenText aria-hidden="true" size={15} />
-                  Sumber
-                  {selectedSourceIds.length
-                    ? ` · ${selectedSourceIds.length}`
-                    : ""}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  aria-controls="workspace-context"
-                  aria-expanded={contextPanelOpen}
-                  onClick={() => setContextPanelOpen(true)}
-                >
-                  <FolderOpen aria-hidden="true" size={15} />
-                  Akses & alat
-                </Button>
-              </div>
-              <p id="workspace-composer-help">
+                    {sending ? (
+                      <LoaderCircle
+                        className={styles.spin}
+                        aria-hidden="true"
+                        size={17}
+                      />
+                    ) : (
+                      <ArrowUp aria-hidden="true" size={17} strokeWidth={2.2} />
+                    )}
+                  </button>
+                </div>
+              </form>
+              <p id="workspace-composer-help" className={styles.composerHelp}>
                 Enter kirim · Shift + Enter baris baru · Maks.{" "}
                 {MAX_WORKSPACE_MESSAGE_CHARACTERS.toLocaleString("id-ID")}{" "}
                 karakter
               </p>
-              <Button
-                type="submit"
-                disabled={composerDisabled || !draft.trim()}
-                aria-label={sending ? "Mengirim pesan" : "Kirim pesan"}
-              >
-                {sending ? (
-                  <LoaderCircle
-                    className={styles.spin}
-                    aria-hidden="true"
-                    size={16}
-                  />
-                ) : (
-                  <Send aria-hidden="true" size={16} />
-                )}
-                {sending ? "Mengirim…" : "Kirim"}
-              </Button>
             </div>
-          </form>
+          </div>
         </div>
 
         <aside
@@ -2186,7 +2310,10 @@ export function WorkspaceConversation() {
             </Button>
           </header>
           <div className={styles.contextScroll}>
-            <section className={styles.contextSection}>
+            <section
+              id="workspace-context-sources"
+              className={styles.contextSection}
+            >
               <div className={styles.contextSectionHeading}>
                 <h3>Sumber proyek</h3>
                 <Button asChild variant="ghost" size="sm">
@@ -2455,63 +2582,6 @@ export function WorkspaceConversation() {
                   </Link>
                 </Button>
               </div>
-              <label className={styles.retrievalControl}>
-                <span>Gaya jawaban</span>
-                <select
-                  id="workspace-preference"
-                  value={preference}
-                  disabled={
-                    sending ||
-                    conversationHistoryStatus !== "ready" ||
-                    selectedSourceValidation.issues.length > 0
-                  }
-                  onChange={(event) =>
-                    updatePreference(event.target.value as WorkspacePreference)
-                  }
-                >
-                  <option value="efficiency">Ringkas</option>
-                  <option value="balanced">Seimbang</option>
-                  <option value="quality">Mendalam</option>
-                </select>
-              </label>
-              {codexTargetReady &&
-              (supportedThinkingEfforts.length > 0 ||
-                selectedThinkingEffortUnavailable) ? (
-                <label className={styles.retrievalControl}>
-                  <span>Reasoning effort Codex</span>
-                  <select
-                    id="workspace-thinking"
-                    value={selectedThinkingValue}
-                    disabled={sending || conversationHistoryStatus !== "ready"}
-                    onChange={(event) =>
-                      updateThinkingEffort(event.target.value)
-                    }
-                    aria-describedby="workspace-thinking-help"
-                  >
-                    <option value="auto">Otomatis</option>
-                    <option value="">
-                      Standar
-                      {defaultThinkingEffort
-                        ? ` · ${thinkingEffortLabel(defaultThinkingEffort)}`
-                        : ""}
-                    </option>
-                    {selectedThinkingEffortUnavailable ? (
-                      <option
-                        value={selectedThinkingEffortUnavailable}
-                        disabled
-                      >
-                        {thinkingEffortLabel(selectedThinkingEffortUnavailable)}
-                        {" · tidak didukung model saat ini"}
-                      </option>
-                    ) : null}
-                    {supportedThinkingEfforts.map((effort) => (
-                      <option key={effort} value={effort}>
-                        {thinkingEffortLabel(effort)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
               {codexTargetReady && supportedThinkingEfforts.length > 0 ? (
                 <p
                   id="workspace-thinking-help"

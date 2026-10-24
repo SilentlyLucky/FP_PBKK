@@ -103,6 +103,69 @@ interface ProviderApiResult {
   };
 }
 
+function CapabilitySummary({
+  capabilities,
+}: {
+  capabilities: Record<
+    string,
+    { status: string; reason?: string | null | undefined }
+  >;
+}) {
+  const entries = Object.entries(capabilities);
+  const observed = entries.filter(
+    ([, evidence]) => evidence.status !== "unknown",
+  );
+  return (
+    <details className="capability-details">
+      <summary>
+        {observed.length}/{entries.length} capability teramati
+      </summary>
+      <ul className="capability-chips">
+        {entries.map(([name, evidence]) => (
+          <li
+            key={name}
+            className="capability-chip"
+            data-status={evidence.status}
+            title={evidence.reason ?? undefined}
+          >
+            {evidence.status === "policy_restricted" ||
+            evidence.status === "not_exposed" ? (
+              <Shield size={14} aria-hidden="true" />
+            ) : evidence.status === "supported" ? (
+              <CheckCircle2 size={14} aria-hidden="true" />
+            ) : (
+              <CircleHelp size={14} aria-hidden="true" />
+            )}
+            <span>{labels[name] ?? name}</span>
+            {evidence.status !== "unknown" ? (
+              <Badge
+                variant={
+                  evidence.status === "supported"
+                    ? "success"
+                    : evidence.status === "policy_restricted" ||
+                        evidence.status === "not_exposed"
+                      ? "warning"
+                      : evidence.status === "unsupported" ||
+                          evidence.status === "failed"
+                        ? "danger"
+                        : "muted"
+                }
+              >
+                {capabilityLabel(
+                  evidence.status as Parameters<typeof capabilityLabel>[0],
+                )}
+              </Badge>
+            ) : null}
+            {evidence.status !== "unknown" && evidence.reason ? (
+              <span className="capability-reason">{evidence.reason}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export function ProviderSettings() {
   const [providers, setProviders] = useState<ProviderConnectionState[]>([]);
   const [projectPrerequisite, setProjectPrerequisite] =
@@ -127,8 +190,9 @@ export function ProviderSettings() {
   const [capabilityCampaigns, setCapabilityCampaigns] = useState<
     Partial<Record<CampaignProvider, CapabilityCampaignResult>>
   >({});
-  const [campaignAction, setCampaignAction] =
-    useState<CampaignProvider | null>(null);
+  const [campaignAction, setCampaignAction] = useState<CampaignProvider | null>(
+    null,
+  );
   const [campaignMessage, setCampaignMessage] = useState<{
     provider: CampaignProvider;
     text: string;
@@ -186,10 +250,9 @@ export function ProviderSettings() {
 
   useEffect(() => {
     let active = true;
-    loadProviders()
-      .catch(() => {
-        if (active) setError("Status provider tidak tersedia.");
-      });
+    loadProviders().catch(() => {
+      if (active) setError("Status provider tidak tersedia.");
+    });
     return () => {
       active = false;
     };
@@ -429,9 +492,7 @@ export function ProviderSettings() {
       delete next.campus_gateway;
       return next;
     });
-    setVerificationMessage(
-      "Mengirim satu request kecil ke Gateway Kampus…",
-    );
+    setVerificationMessage("Mengirim satu request kecil ke Gateway Kampus…");
     setVerificationFailed(false);
     try {
       const response = await fetch("/api/providers", {
@@ -524,7 +585,7 @@ export function ProviderSettings() {
 
   if (error)
     return (
-      <p className="error-message" role="alert">
+      <p className="error-message provider-error-callout" role="alert">
         {error}
       </p>
     );
@@ -728,7 +789,8 @@ export function ProviderSettings() {
                     disabled={
                       verifying ||
                       codexAction !== null ||
-                      campaignAction !== null || !codexCampaignAvailable
+                      campaignAction !== null ||
+                      !codexCampaignAvailable
                     }
                   >
                     {campaignAction === "codex_app_server"
@@ -780,9 +842,9 @@ export function ProviderSettings() {
                   <p className="helper">
                     4 panggilan maksimum: dua request streaming identik dengan
                     schema, satu forced tool call yang tidak dijalankan, dan
-                    satu uji batal lokal. Gateway tidak menyediakan probe
-                    kuota atau pembatalan remote pada adapter ini. Budget
-                    lengkap diperiksa sebelum request pertama.
+                    satu uji batal lokal. Gateway tidak menyediakan probe kuota
+                    atau pembatalan remote pada adapter ini. Budget lengkap
+                    diperiksa sebelum request pertama.
                   </p>
                 </div>
               ) : null}
@@ -795,50 +857,12 @@ export function ProviderSettings() {
                   {campaignMessage.text}
                 </p>
               ) : null}
-              <div className="capability-grid">
-                {Object.entries(
-                  capabilityCampaigns[
-                    provider.provider as CampaignProvider
-                  ]?.capabilities ?? provider.capabilities,
-                ).map(
-                  ([name, evidence]) => (
-                    <div key={name} className="capability-row">
-                      {evidence.status === "policy_restricted" ||
-                      evidence.status === "not_exposed" ? (
-                        <Shield size={15} aria-hidden="true" />
-                      ) : evidence.status === "supported" ? (
-                        <CheckCircle2 size={15} aria-hidden="true" />
-                      ) : (
-                        <CircleHelp size={15} aria-hidden="true" />
-                      )}
-                      <div className="capability-copy">
-                        <span>{labels[name] ?? name}</span>
-                        {evidence.reason ? (
-                          <span className="capability-reason">
-                            {evidence.reason}
-                          </span>
-                        ) : null}
-                      </div>
-                      <Badge
-                        variant={
-                          evidence.status === "supported"
-                            ? "success"
-                            : evidence.status === "policy_restricted"
-                              ? "warning"
-                              : evidence.status === "not_exposed"
-                                ? "warning"
-                                : evidence.status === "unsupported" ||
-                                    evidence.status === "failed"
-                                ? "danger"
-                                : "muted"
-                        }
-                      >
-                        {capabilityLabel(evidence.status)}
-                      </Badge>
-                    </div>
-                  ),
-                )}
-              </div>
+              <CapabilitySummary
+                capabilities={
+                  capabilityCampaigns[provider.provider as CampaignProvider]
+                    ?.capabilities ?? provider.capabilities
+                }
+              />
             </CardContent>
           </Card>
         ))}

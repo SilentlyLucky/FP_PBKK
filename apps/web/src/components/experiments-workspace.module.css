@@ -1,9 +1,9 @@
 .experiments {
-  --experiment-ink: #0f172a;
-  --experiment-muted: #64748b;
-  --experiment-border: #e2e8f0;
-  --experiment-blue: #2563eb;
-  --experiment-flowku: #0f766e;
+  --experiment-ink: var(--foreground);
+  --experiment-muted: var(--muted-foreground);
+  --experiment-border: var(--border);
+  --experiment-blue: var(--accent-text);
+  --experiment-flowku: var(--primary);
   display: grid;
   gap: 18px;
 }
@@ -17,8 +17,8 @@
   min-width: 0;
   border-color: var(--experiment-border);
   border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .experiments :global(.card > header) {
@@ -54,9 +54,9 @@
 
 .promptInput {
   min-height: 176px;
-  border-color: #cbd5e1;
+  border-color: var(--border-strong);
   border-radius: 12px;
-  background: #fcfdff;
+  background: var(--surface-muted);
   font-family: inherit;
   font-size: 15px;
   line-height: 1.65;
@@ -64,7 +64,7 @@
 
 .promptInput:focus-visible {
   border-color: var(--experiment-blue);
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+  box-shadow: none;
 }
 
 .baselineSummary {
@@ -72,9 +72,9 @@
   min-width: 0;
   align-items: center;
   gap: 12px;
-  border: 1px solid #dbeafe;
-  border-radius: 11px;
-  background: #f8fbff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
   padding: 12px 14px;
 }
 
@@ -93,11 +93,9 @@
 }
 
 .summaryLabel {
-  color: var(--experiment-blue);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .baselineSummary strong {
@@ -119,7 +117,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
@@ -145,7 +143,7 @@
 .reportDetails > summary,
 .decisionDisclosure > summary {
   width: fit-content;
-  color: #475569;
+  color: var(--muted-foreground);
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
@@ -203,15 +201,15 @@
 .testPrompt {
   display: grid;
   gap: 7px;
-  border-left: 3px solid #94a3b8;
+  border-left: 3px solid var(--border-strong);
   border-radius: 0 9px 9px 0;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 12px 15px;
 }
 
 .testPrompt p {
   margin: 0;
-  color: #334155;
+  color: var(--foreground);
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -235,12 +233,12 @@
 }
 
 .baselineAnswer {
-  border-top: 3px solid #94a3b8 !important;
+  border-top: 3px solid var(--border-strong) !important;
 }
 
 .flowkuAnswer {
   border-top: 3px solid var(--experiment-flowku) !important;
-  background: #fbfefd;
+  background: var(--surface-muted);
 }
 
 .noFlowkuCandidate {
@@ -273,11 +271,11 @@
 .reportCard :global(.experiment-answer-column details pre) {
   max-height: 220px;
   overflow: auto;
-  border: 1px solid #edf2f7;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 10px;
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -290,9 +288,9 @@
   overflow: auto;
   border: 0;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 12px;
-  color: #1e293b;
+  color: var(--foreground);
   font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
@@ -301,7 +299,7 @@
 
 .reportCard :global(.experiment-answer-facts) {
   margin-top: 12px;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--border);
   padding-top: 9px;
   color: var(--experiment-muted);
   font-size: 12px;
@@ -318,14 +316,14 @@
   gap: 10px 18px;
   border: 0;
   border-radius: 0;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--border);
   background: transparent;
   padding: 12px 0;
 }
 
 .reportDetails :global(.experiment-facts dt) {
   color: var(--experiment-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .reportDetails :global(.experiment-facts dd) {
@@ -358,9 +356,9 @@
 
 .decisionDisclosure > :global(.experiment-decision) {
   margin-top: 12px;
-  border-color: #dbeafe;
+  border-color: var(--accent-border);
   border-radius: 12px;
-  background: #f8fbff;
+  background: var(--surface-muted);
   padding: 16px;
 }
 
@@ -412,4 +410,19 @@
   .reportDetails > :global(.experiment-facts) {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Pesan penghalang: callout peringatan kecil. */
+.blocker {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  border-radius: 10px;
+  background: var(--warning-soft);
+  padding: 10px 12px;
+  color: var(--warning-text);
+}
+
+.blocker a {
+  color: var(--accent-text);
+  font-weight: 500;
 }

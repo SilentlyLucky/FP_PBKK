@@ -1,9 +1,4 @@
-import {
-  Database,
-  HardDrive,
-  ShieldCheck,
-  SlidersHorizontal,
-} from "lucide-react";
+import { HardDrive } from "lucide-react";
 
 import { PageHeading } from "@/components/page-heading";
 import { LocalWorkspaceStatus } from "@/components/local-workspace-status";
@@ -22,16 +17,12 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeading
-        eyebrow="Kontrol runtime lokal"
         title="Pengaturan"
         description="Periksa koneksi provider dan batas runtime yang benar-benar digunakan. Status kemampuan mengikuti bukti, bukan nama model."
       />
       <div className={styles.page}>
         <Card className={styles.providerSection}>
           <CardHeader className={styles.sectionHeader}>
-            <span className={styles.sectionIcon} aria-hidden="true">
-              <Database size={18} />
-            </span>
             <div className={styles.sectionHeadingCopy}>
               <CardTitle>Provider & model</CardTitle>
               <CardDescription>
@@ -51,9 +42,6 @@ export default function SettingsPage() {
         <div className={styles.secondaryGrid}>
           <Card>
             <CardHeader className={styles.cardHeader}>
-              <span className={styles.sectionIcon} aria-hidden="true">
-                <SlidersHorizontal size={17} />
-              </span>
               <div>
                 <CardTitle>Batas runtime</CardTitle>
                 <CardDescription>
@@ -82,9 +70,6 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader className={styles.cardHeader}>
-              <span className={styles.sectionIcon} aria-hidden="true">
-                <ShieldCheck size={17} />
-              </span>
               <div>
                 <CardTitle>Akses & data</CardTitle>
                 <CardDescription>

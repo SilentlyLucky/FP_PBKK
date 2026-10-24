@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  expectActiveProjectId,
+  selectProjectById,
+} from "./helpers/project-picker";
 
 const projectA = "project-local-review-a";
 const projectB = "project-local-review-b";
@@ -585,8 +589,8 @@ test("expires read grants and clears permissions and file content on project swi
   await page.getByRole("button", { name: "Izinkan baca" }).click();
   await grantWrite(page);
   const activeGrants = fixture.grants.slice(-2);
-  await page.locator("#active-project").selectOption(projectB);
-  await expect(page.locator("#active-project")).toHaveValue(projectB);
+  await selectProjectById(page, projectB);
+  await expectActiveProjectId(page, projectB);
   await expect(page.getByText("Folder diizinkan")).toBeVisible();
   await expect(
     page.getByLabel("Saya meminta akses baca sementara ke folder proyek ini."),

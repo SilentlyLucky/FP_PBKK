@@ -1,8 +1,8 @@
 .workspace {
-  --knowledge-ink: #0f172a;
-  --knowledge-muted: #64748b;
-  --knowledge-border: #e2e8f0;
-  --knowledge-blue: #2563eb;
+  --knowledge-ink: var(--foreground);
+  --knowledge-muted: var(--muted-foreground);
+  --knowledge-border: var(--border);
+  --knowledge-blue: var(--accent-text);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
@@ -25,7 +25,7 @@
 .workspace :global(textarea:focus-visible),
 .workspace :global(select:focus-visible),
 .workspace :global(summary:focus-visible) {
-  outline: 2px solid #1d4ed8 !important;
+  outline: 2px solid var(--primary) !important;
   outline-offset: 2px !important;
   transition: none !important;
 }
@@ -34,8 +34,8 @@
   min-width: 0;
   border-color: var(--knowledge-border);
   border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .workspace :global(.card > header) {
@@ -83,16 +83,14 @@
 
 .memoryExport > :global(.helper) {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
 .eyebrow {
-  color: var(--knowledge-blue);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .statusGrid {
@@ -155,13 +153,13 @@
   padding: 0 16px 14px;
   border: 1px solid var(--knowledge-border);
   border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 4%);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .advancedDiagnostics > summary {
   padding: 15px 2px;
-  color: #475569;
+  color: var(--muted-foreground);
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
@@ -176,7 +174,7 @@
   flex-wrap: wrap;
   gap: 8px 18px;
   padding: 12px 2px;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -205,7 +203,7 @@
   gap: 8px;
   border: 1px solid var(--knowledge-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   padding: 0 10px;
   color: var(--knowledge-muted);
 }
@@ -215,9 +213,9 @@
   gap: 10px;
   margin-top: 16px;
   padding: 14px;
-  border: 1px solid #dbe4f0;
+  border: 1px solid var(--border);
   border-radius: 11px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .sourcePreviewHeading {
@@ -240,19 +238,19 @@
 
 .sourcePreviewChunk {
   padding: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .sourcePreviewChunk strong {
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
 }
 
 .sourcePreviewChunk p {
   margin: 7px 0 0;
-  color: #475569;
+  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -261,7 +259,7 @@
 
 .searchField:focus-within {
   border-color: var(--knowledge-blue);
-  outline: 3px solid rgb(37 99 235 / 15%);
+  outline: 2px solid var(--focus-ring);
 }
 
 .searchField input {
@@ -276,7 +274,7 @@
 }
 
 .searchField input::placeholder {
-  color: #94a3b8;
+  color: var(--muted-foreground);
 }
 
 .sourcesCard :global(.knowledge-source-list) {
@@ -286,7 +284,7 @@
 .sourcesCard :global(.knowledge-source-card) {
   display: grid;
   gap: 10px;
-  border-color: #e7edf5;
+  border-color: var(--border);
   border-radius: 11px;
   padding: 12px;
   transition:
@@ -295,8 +293,8 @@
 }
 
 .sourcesCard :global(.knowledge-source-card:hover) {
-  border-color: #bfdbfe;
-  background: #fbfdff;
+  border-color: var(--accent-border);
+  background: var(--surface-muted);
 }
 
 .sourcesCard :global(.knowledge-source-title) {
@@ -321,17 +319,17 @@
 .referenceCard :global(.reference-source-card),
 .referenceCard :global(.reference-preview-card) {
   min-width: 0;
-  border: 1px solid #e7edf5;
+  border: 1px solid var(--border);
   border-radius: 11px;
-  background: #fff;
+  background: var(--surface);
   padding: 13px;
 }
 
 .referenceCard :global(.reference-preview-card blockquote) {
   margin: 10px 0;
-  border-left: 2px solid #93c5fd;
+  border-left: 2px solid var(--accent-border);
   padding-left: 10px;
-  color: #334155;
+  color: var(--foreground);
 }
 
 @media (max-width: 1020px) {
@@ -408,14 +406,14 @@
   gap: 14px 20px;
   border: 1px solid var(--knowledge-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   padding: 16px 20px;
 }
 
 .sourceOverview > :global(button) {
-  border-color: #2563eb;
-  background-color: #2563eb;
-  color: #fff;
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .overviewHeading {
@@ -435,7 +433,7 @@
 .overviewMetrics > div {
   display: grid;
   gap: 4px;
-  border-left: 1px solid #e8edf4;
+  border-left: 1px solid var(--border);
   padding: 0 18px;
 }
 
@@ -454,7 +452,7 @@
 
 .overviewMetrics span {
   color: var(--knowledge-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .sourceListAndPreview {
@@ -476,7 +474,7 @@
 .compactSourceRow {
   gap: 7px !important;
   border-right: 0 !important;
-  border-bottom: 1px solid #e7edf5 !important;
+  border-bottom: 1px solid var(--border) !important;
   border-left: 0 !important;
   border-radius: 0 !important;
   padding: 10px 4px !important;
@@ -488,15 +486,15 @@
 
 .sourceIndexDetails {
   margin-left: 48px;
-  color: #475569;
-  font-size: 11px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .sourceIndexDetails > summary {
   width: fit-content;
   min-height: 36px;
   align-content: center;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font-weight: 600;
 }
@@ -504,7 +502,7 @@
 .sourceIndexDetails > div {
   display: grid;
   gap: 4px;
-  border-left: 2px solid #bfdbfe;
+  border-left: 2px solid var(--accent-border);
   padding: 4px 0 4px 10px;
 }
 
@@ -515,7 +513,7 @@
 }
 
 .sourceIndexDetails small {
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 
 .sourceTools :global(.select) {
@@ -616,7 +614,7 @@
   padding: 20px 22px;
   border: 1px solid var(--knowledge-border);
   border-radius: 14px;
-  background: linear-gradient(120deg, #fff 0%, #f8fafc 100%);
+  background: var(--surface);
 }
 
 .sourceSummaryCopy {
@@ -624,7 +622,7 @@
 }
 
 .sourceSummary :global(button:hover:not(:disabled)) {
-  background-color: #1d4ed8;
+  background-color: var(--primary);
 }
 
 .sourceFeedback {
@@ -639,17 +637,16 @@
   max-height: calc(100dvh - 32px);
   margin: auto;
   overflow: auto;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   padding: 0;
   color: var(--knowledge-ink);
-  box-shadow: 0 24px 72px rgb(15 23 42 / 24%);
+  box-shadow: var(--shadow-float);
 }
 
 .sourceDialog::backdrop {
-  background: rgb(15 23 42 / 55%);
-  backdrop-filter: blur(3px);
+  background: var(--scrim);
 }
 
 .sourceDialog > :global(.card) {
@@ -663,7 +660,7 @@
   z-index: 1;
   top: 0;
   border-bottom: 1px solid var(--knowledge-border);
-  background: #fff;
+  background: var(--surface);
   padding: 20px 24px 16px;
 }
 
@@ -692,15 +689,15 @@
   min-height: 44px;
   align-items: center;
   gap: 8px;
-  border: 1px dashed #64748b;
+  border: 1px dashed var(--border-strong);
   border-radius: 8px;
-  background: #f1f5f9;
+  background: var(--surface-muted);
   padding: 4px 8px;
   cursor: pointer;
 }
 
 .filePicker:focus-within {
-  outline: 2px solid #1d4ed8;
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
   transition: none;
 }
@@ -711,9 +708,9 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid #64748b;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   padding: 0 10px;
   color: var(--knowledge-ink);
   font-size: 12px;
@@ -723,7 +720,7 @@
 .filePickerName {
   min-width: 0;
   overflow: hidden;
-  color: #475569;
+  color: var(--muted-foreground);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -762,7 +759,7 @@
   display: flex;
   min-height: 44px;
   align-items: center;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -771,7 +768,7 @@
 .sourceOptions > summary:focus-visible,
 .sourceLimits > summary:focus-visible,
 .sourceMoreActions > summary:focus-visible {
-  outline: 3px solid rgb(37 99 235 / 25%);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: 5px;
 }
@@ -785,7 +782,7 @@
 .sourceLimits {
   border: 1px solid var(--knowledge-border);
   border-radius: 9px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 0 12px 12px;
 }
 
@@ -841,8 +838,8 @@
   place-items: center;
   border: 1px solid var(--knowledge-border);
   border-radius: 9px;
-  background: #fff;
-  color: #475569;
+  background: var(--surface);
+  color: var(--muted-foreground);
   cursor: pointer;
   list-style: none;
 }
@@ -853,8 +850,8 @@
 
 .sourceMoreActions > summary:hover,
 .sourceMoreActions[open] > summary {
-  border-color: #cbd5e1;
-  background: #f8fafc;
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
   color: var(--knowledge-ink);
 }
 
@@ -869,9 +866,9 @@
   gap: 2px;
   border: 1px solid var(--knowledge-border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   padding: 6px;
-  box-shadow: 0 12px 32px rgb(15 23 42 / 14%);
+  box-shadow: var(--shadow-float);
 }
 
 .sourceMoreMenu > button {
@@ -883,7 +880,7 @@
   border-radius: 6px;
   background: transparent;
   padding: 0 10px;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -892,11 +889,11 @@
 }
 
 .sourceMoreMenu > button:hover {
-  background: #f1f5f9;
+  background: var(--surface-muted);
 }
 
 .sourceMoreMenu > .sourceDeleteAction {
-  color: #b91c1c;
+  color: var(--danger-text);
 }
 
 .sourceMetaLine {
@@ -907,7 +904,7 @@
   gap: 6px 10px;
   margin-left: 48px;
   color: var(--knowledge-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -915,7 +912,7 @@
 .sourceLimits > summary::before {
   width: 16px;
   flex: 0 0 16px;
-  color: #64748b;
+  color: var(--muted-foreground);
   content: "›";
   font-size: 20px;
   line-height: 1;
@@ -948,7 +945,7 @@
 }
 
 .sourceTotal span {
-  color: #475569;
+  color: var(--muted-foreground);
   font-size: 14px;
   font-weight: 600;
 }
@@ -958,12 +955,12 @@
   min-width: 0;
   border: 1px solid var(--knowledge-border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .secondaryDisclosure > summary {
   padding: 14px 3px;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
@@ -976,7 +973,7 @@
 .secondaryDisclosure:focus-visible > summary,
 .secondaryDisclosure > summary:focus-visible,
 .advancedDiagnostics > summary:focus-visible {
-  outline: 3px solid rgb(37 99 235 / 24%);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: 5px;
 }
@@ -991,7 +988,7 @@
   padding: 4px;
   border: 1px solid var(--knowledge-border);
   border-radius: 11px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .viewSwitch button {
@@ -1006,9 +1003,9 @@
   min-height: 21px;
   place-items: center;
   border-radius: 999px;
-  background: rgb(148 163 184 / 15%);
-  color: #475569;
-  font-size: 11px;
+  background: var(--hover);
+  color: var(--muted-foreground);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1032,11 +1029,11 @@
 
 .graphNotice {
   margin: 0 0 14px;
-  border: 1px solid #f5d28a;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
   border-radius: 9px;
-  background: #fffbeb;
+  background: var(--warning-soft);
   padding: 10px 12px;
-  color: #854d0e;
+  color: var(--warning-text);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1052,11 +1049,9 @@
 .graphVisualization {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 11px;
-  background-color: #f8fafc;
-  background-image: radial-gradient(#cbd5e1 0.7px, transparent 0.7px);
-  background-size: 16px 16px;
+  background-color: var(--surface-muted);
 }
 
 .graphVisualization svg {
@@ -1068,7 +1063,7 @@
 }
 
 .graphEdges {
-  color: #94a3b8;
+  color: var(--muted-foreground);
 }
 
 .graphEdges path {
@@ -1086,23 +1081,23 @@
 }
 
 .graphNodes circle {
-  fill: #fff;
-  stroke: #93c5fd;
+  fill: var(--surface);
+  stroke: var(--accent-border);
   stroke-width: 1.5;
-  filter: drop-shadow(0 2px 4px rgb(15 23 42 / 8%));
+  filter: none;
 }
 
 .graphNodes text {
-  fill: #0f172a;
+  fill: var(--foreground);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   text-anchor: middle;
 }
 
 .graphNodes .graphNodeType {
-  fill: #64748b;
-  font-size: 9px;
+  fill: var(--muted-foreground);
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -1113,7 +1108,7 @@
 .relationListPanel h3,
 .relationDetail h3 {
   margin: 0 0 9px;
-  color: #334155;
+  color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1139,14 +1134,14 @@
 .relationPagination > span {
   flex: 0 0 auto;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .relationPagination :global(button) {
   min-height: 44px;
   padding-inline: 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .relationChoice {
@@ -1154,11 +1149,11 @@
   width: 100%;
   min-width: 0;
   gap: 3px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--surface);
   padding: 9px 10px;
-  color: #475569;
+  color: var(--muted-foreground);
   cursor: pointer;
   text-align: left;
   transition:
@@ -1176,25 +1171,25 @@
 
 .relationChoice span {
   overflow: hidden;
-  color: #2563eb;
-  font-size: 11px;
+  color: var(--accent-text);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .relationChoice small {
   color: var(--knowledge-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .relationChoice:hover,
 .relationChoice[aria-pressed="true"] {
-  border-color: #93c5fd;
-  background: #eff6ff;
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
 .relationChoice:focus-visible {
-  outline: 3px solid rgb(37 99 235 / 25%);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1212,13 +1207,13 @@
 
 .relationStatement {
   margin: 0;
-  color: #334155;
+  color: var(--foreground);
   font-size: 13px;
   line-height: 1.5;
 }
 
 .relationStatement span {
-  color: #2563eb;
+  color: var(--accent-text);
 }
 
 .relationEvidenceList {
@@ -1232,9 +1227,9 @@
 .relationEvidence {
   display: grid;
   gap: 7px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 11px 12px;
 }
 
@@ -1244,16 +1239,16 @@
 }
 
 .relationEvidence > div > strong {
-  color: #334155;
+  color: var(--foreground);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .relationEvidence blockquote {
   margin: 0;
-  border-left: 2px solid #93c5fd;
+  border-left: 2px solid var(--accent-border);
   padding-left: 9px;
-  color: #475569;
+  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -1264,14 +1259,14 @@
   width: fit-content;
   align-items: center;
   gap: 5px;
-  color: #1d4ed8;
-  font-size: 11px;
+  color: var(--accent-text);
+  font-size: 12px;
   font-weight: 600;
 }
 
 .relationEvidence > a:focus-visible {
   border-radius: 3px;
-  outline: 3px solid rgb(37 99 235 / 25%);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1410,5 +1405,95 @@
   .sourceOptions > summary::before,
   .sourceLimits > summary::before {
     transition: none;
+  }
+}
+
+/* ---------- Warm Slate: ringkasan sebagai baris alur, disclosure seragam ---------- */
+.overviewMetrics > div {
+  position: relative;
+}
+
+.overviewMetrics > div:not(:last-child)::after {
+  position: absolute;
+  top: 1px;
+  right: 6px;
+  color: var(--muted-foreground);
+  content: "→";
+}
+
+.overviewMetrics strong {
+  font-family: var(--font-code);
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.overviewMetrics span {
+  font-size: 12.5px;
+}
+
+.advancedDiagnostics,
+.secondaryDisclosure {
+  border-color: var(--border);
+}
+
+.advancedDiagnostics > summary,
+.secondaryDisclosure > summary,
+.sourceOptions > summary {
+  min-height: 44px;
+  align-content: center;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.sourceTools :global(.select) {
+  min-height: 44px;
+}
+
+.searchField {
+  height: 44px;
+}
+
+.sourceDialog :global(.source-mode-switch) {
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sourceDialog :global(.source-mode-switch > button) {
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted-foreground);
+}
+
+.sourceDialog :global(.source-mode-switch > button:hover) {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.sourceDialog :global(.source-mode-switch > button[aria-pressed="true"]) {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+}
+
+.overviewMetrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.overviewMetrics span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .sourceOverview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sourceOverview > :global(button) {
+    justify-self: start;
   }
 }
