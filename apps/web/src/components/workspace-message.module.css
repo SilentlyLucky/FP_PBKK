@@ -36,7 +36,7 @@
 .message h5,
 .message h6 {
   color: var(--foreground);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.02em;
 }
@@ -150,7 +150,7 @@
   padding: 16px;
   color: var(--foreground);
   font-family: var(--font-code);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.6;
   tab-size: 2;
   white-space: pre;
@@ -185,7 +185,7 @@
   fill: var(--foreground);
   font-family: var(--font-ui);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .diagramEdge {
@@ -265,7 +265,7 @@
 
 .message th {
   background: var(--surface-muted);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 @media (max-width: 640px) {

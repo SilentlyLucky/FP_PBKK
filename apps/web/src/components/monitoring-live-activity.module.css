@@ -36,7 +36,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.015em;
 }
 
@@ -75,7 +75,7 @@
   padding: 8px;
   color: var(--accent-text);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

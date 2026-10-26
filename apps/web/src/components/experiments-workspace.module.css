@@ -49,7 +49,7 @@
 .promptEditor label {
   color: var(--experiment-ink);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .promptInput {
@@ -94,7 +94,7 @@
 
 .summaryLabel {
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -146,7 +146,7 @@
   color: var(--muted-foreground);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   list-style-position: inside;
 }
 
@@ -346,7 +346,7 @@
 .reportDetails :global(.experiment-metric-card > span:not(.helper)) {
   color: var(--experiment-ink);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .reportCard :global(.experiment-report-actions) {

@@ -347,6 +347,7 @@ export function WorkspaceConversation() {
   >(null);
   const {
     slot: sidebarSlot,
+    newSlot: sidebarNewSlot,
     mobileOpen: historyOpen,
     setMobileOpen: setHistoryOpen,
   } = useSidebar();
@@ -1706,6 +1707,22 @@ export function WorkspaceConversation() {
           styles.layout + (contextPanelOpen ? " " + styles.contextVisible : "")
         }
       >
+        {sidebarNewSlot
+          ? createPortal(
+              <button
+                type="button"
+                className="sidebar-new"
+                onClick={startNewConversation}
+                disabled={
+                  !activeProjectId || conversationHistoryStatus !== "ready"
+                }
+              >
+                <MessageSquarePlus aria-hidden="true" size={17} />
+                <span className="nav-label">Percakapan baru</span>
+              </button>,
+              sidebarNewSlot,
+            )
+          : null}
         {sidebarSlot
           ? createPortal(
               <aside
@@ -1714,18 +1731,6 @@ export function WorkspaceConversation() {
                 aria-label="Riwayat percakapan"
               >
                 <div className={styles.historyHeader}>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={styles.newConversationButton}
-                    onClick={startNewConversation}
-                    disabled={
-                      !activeProjectId || conversationHistoryStatus !== "ready"
-                    }
-                  >
-                    <MessageSquarePlus aria-hidden="true" size={16} />
-                    Percakapan baru
-                  </Button>
                   <label
                     className={styles.historySearch}
                     htmlFor="conversation-search"
@@ -1887,6 +1892,9 @@ export function WorkspaceConversation() {
                   : ""}
               </p>
               <span className={styles.crumbSep} aria-hidden="true">
+                /
+              </span>
+              <span className={styles.crumbSepTitle} aria-hidden="true">
                 /
               </span>
               <h2>{activeConversation?.title ?? "Percakapan baru"}</h2>

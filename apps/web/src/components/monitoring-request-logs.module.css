@@ -43,7 +43,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .header p,
@@ -72,7 +72,7 @@
   gap: 5px;
   color: var(--muted-foreground);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .filters input,
@@ -157,7 +157,7 @@
   cursor: pointer;
   color: var(--accent-text);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -252,7 +252,7 @@
     content: attr(data-label);
     color: var(--muted-foreground);
     font-size: 12px;
-    font-weight: 550;
+    font-weight: 500;
   }
 
   .details dl {

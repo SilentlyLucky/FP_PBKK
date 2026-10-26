@@ -77,13 +77,13 @@
   margin: 0;
   padding-inline: 4px;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .sourceSelection legend {
   padding-inline: 4px;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .armOptions {
@@ -215,7 +215,7 @@
 .decision h3 {
   margin: 0;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .facts {
@@ -285,7 +285,7 @@
   min-width: 0;
   margin: 0;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 

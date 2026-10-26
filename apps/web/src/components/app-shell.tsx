@@ -304,6 +304,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [newSlot, setNewSlot] = useState<HTMLElement | null>(null);
   const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const isWorkspace = pathname === "/workspace";
   const activeNavigation = navigation.find(
@@ -351,10 +352,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const sidebarContext = useMemo(
     () => ({
       slot,
+      newSlot,
       mobileOpen: mobileMenuOpen,
       setMobileOpen: setMobileMenuOpen,
     }),
-    [slot, mobileMenuOpen],
+    [slot, newSlot, mobileMenuOpen],
   );
 
   return (
@@ -430,16 +432,18 @@ function ShellContent({ children }: { children: React.ReactNode }) {
               )}
             </Button>
           </div>
-          {!isWorkspace ? (
-            <Link
-              className="sidebar-new"
-              href="/workspace"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <MessageSquarePlus aria-hidden="true" size={17} />
-              <span className="nav-label">Percakapan baru</span>
-            </Link>
-          ) : null}
+          <div ref={setNewSlot} className="sidebar-new-slot">
+            {!isWorkspace ? (
+              <Link
+                className="sidebar-new"
+                href="/workspace"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <MessageSquarePlus aria-hidden="true" size={17} />
+                <span className="nav-label">Percakapan baru</span>
+              </Link>
+            ) : null}
+          </div>
           <nav
             id="primary-navigation"
             className="nav-list"

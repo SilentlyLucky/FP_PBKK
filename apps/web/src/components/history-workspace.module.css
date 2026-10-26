@@ -100,7 +100,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .listHeader p,
@@ -175,7 +175,7 @@
 
 .itemMain > strong {
   font-size: 12px;
-  font-weight: 630;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -231,7 +231,7 @@
 
 .detailEyebrow {
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -240,7 +240,7 @@
   overflow-wrap: anywhere;
   color: var(--foreground);
   font-size: clamp(17px, 2vw, 22px);
-  font-weight: 660;
+  font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.25;
 }
@@ -344,7 +344,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .decisionEventsHeading > span,
@@ -372,7 +372,7 @@
 .decisionItemHeading strong {
   color: var(--foreground);
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .decisionList .mono {
@@ -399,7 +399,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .runOutput p {
@@ -436,7 +436,7 @@
   margin: 0;
   color: var(--foreground);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .promptBlock pre {

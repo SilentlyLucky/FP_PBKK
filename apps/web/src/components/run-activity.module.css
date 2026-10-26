@@ -44,7 +44,7 @@
 .titleRow strong {
   color: var(--foreground);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -103,7 +103,7 @@
   align-items: center;
   color: var(--accent-text);
   cursor: pointer;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .detailList {

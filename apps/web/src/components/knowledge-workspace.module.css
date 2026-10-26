@@ -89,7 +89,7 @@
 
 .eyebrow {
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -162,7 +162,7 @@
   color: var(--muted-foreground);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .advancedDiagnostics[open] > summary {
@@ -445,7 +445,7 @@
 .overviewMetrics strong {
   color: var(--knowledge-ink);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.1;
 }
@@ -714,7 +714,7 @@
   padding: 0 10px;
   color: var(--knowledge-ink);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .filePickerName {
@@ -938,7 +938,7 @@
 
 .sourceTotal strong {
   font-size: clamp(30px, 4vw, 42px);
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.06em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
@@ -963,7 +963,7 @@
   color: var(--foreground);
   cursor: pointer;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .secondaryDisclosure[open] > summary {
@@ -1091,7 +1091,7 @@
   fill: var(--foreground);
   font-family: inherit;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   text-anchor: middle;
 }
 
@@ -1110,7 +1110,7 @@
   margin: 0 0 9px;
   color: var(--foreground);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .relationList {
@@ -1429,7 +1429,7 @@
 }
 
 .overviewMetrics span {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .advancedDiagnostics,
